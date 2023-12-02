@@ -1,0 +1,1 @@
+python -m pdb test_prompt.py --checkpoint result/nougat/20231108_131847 -d data/train_data/validation.jsonl --save_path output/tmp --split validation

@@ -1,0 +1,4 @@
+nltk
+Levenshtein
+pip install torchvision
+pip install -U 'wandb>=0.12.10'
