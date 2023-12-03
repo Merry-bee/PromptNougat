@@ -308,4 +308,63 @@ WARNING:root:Found repetitions in sample 1
 WARNING:root:Found repetitions in sample 1
 
 Validation DataLoader 0: 100%|██████████| 1/1 [00:11<00:00, 11.14s/it][AEpoch 27: 100%|██████████| 11/11 [00:28<00:00,  2.62s/it, loss=4.15, v_num=7szs]Epoch 27: 100%|██████████| 11/11 [00:28<00:00,  2.62s/it, loss=4.15, v_num=7szs]
-                                                                      [AEpoch 27: 100%|██████████| 11/11 [00:28<00:00,  2.62s/it, loss=4.15, v_num=7szs]Epoch 27:   0%|          | 0/11 [00:00<?, ?it/s, loss=4.15, v_num=7szs]         Epoch 28:   0%|          | 0/11 [00:00<?, ?it/s, loss=4.15, v_num=7szs]Epoch 28:   9%|▉         | 1/11 [00:02<00:24,  2.50s/it, loss=4.15, v_num=7szs]Epoch 28:   9%|▉         | 1/11 [00:02<00:24,  2.50s/it, loss=4.14, v_num=7szs]Epoch 28:  18%|█▊        | 2/11 [00:04<00:19,  2.18s/it, loss=4.14, v_num=7szs]Epoch 28:  18%|█▊        | 2/11 [00:04<00:19,  2.18s/it, loss=4.15, v_num=7szs]Epoch 28:  27%|██▋       | 3/11 [00:06<00:16,  2.03s/it, loss=4.15, v_num=7szs]Epoch 28:  27%|██▋       | 3/11 [00:06<00:16,  2.03s/it, loss=4.15, v_num=7szs]
+                                                                      [AEpoch 27: 100%|██████████| 11/11 [00:28<00:00,  2.62s/it, loss=4.15, v_num=7szs]Epoch 27:   0%|          | 0/11 [00:00<?, ?it/s, loss=4.15, v_num=7szs]         Epoch 28:   0%|          | 0/11 [00:00<?, ?it/s, loss=4.15, v_num=7szs]Epoch 28:   9%|▉         | 1/11 [00:02<00:24,  2.50s/it, loss=4.15, v_num=7szs]Epoch 28:   9%|▉         | 1/11 [00:02<00:24,  2.50s/it, loss=4.14, v_num=7szs]Epoch 28:  18%|█▊        | 2/11 [00:04<00:19,  2.18s/it, loss=4.14, v_num=7szs]Epoch 28:  18%|█▊        | 2/11 [00:04<00:19,  2.18s/it, loss=4.15, v_num=7szs]Epoch 28:  27%|██▋       | 3/11 [00:06<00:16,  2.03s/it, loss=4.15, v_num=7szs]Epoch 28:  27%|██▋       | 3/11 [00:06<00:16,  2.03s/it, loss=4.15, v_num=7szs]Epoch 28:  36%|███▋      | 4/11 [00:07<00:13,  1.95s/it, loss=4.15, v_num=7szs]Epoch 28:  36%|███▋      | 4/11 [00:07<00:13,  1.95s/it, loss=4.24, v_num=7szs]Epoch 28:  45%|████▌     | 5/11 [00:09<00:11,  1.88s/it, loss=4.24, v_num=7szs]Epoch 28:  45%|████▌     | 5/11 [00:09<00:11,  1.88s/it, loss=4.27, v_num=7szs]Epoch 28:  55%|█████▍    | 6/11 [00:11<00:09,  1.87s/it, loss=4.27, v_num=7szs]Epoch 28:  55%|█████▍    | 6/11 [00:11<00:09,  1.87s/it, loss=4.25, v_num=7szs]Epoch 28:  64%|██████▎   | 7/11 [00:12<00:07,  1.85s/it, loss=4.25, v_num=7szs]Epoch 28:  64%|██████▎   | 7/11 [00:12<00:07,  1.85s/it, loss=4.25, v_num=7szs]Epoch 28:  73%|███████▎  | 8/11 [00:14<00:05,  1.85s/it, loss=4.25, v_num=7szs]Epoch 28:  73%|███████▎  | 8/11 [00:14<00:05,  1.85s/it, loss=4.28, v_num=7szs]Epoch 28:  82%|████████▏ | 9/11 [00:16<00:03,  1.84s/it, loss=4.28, v_num=7szs]Epoch 28:  82%|████████▏ | 9/11 [00:16<00:03,  1.84s/it, loss=4.17, v_num=7szs]Epoch 28:  91%|█████████ | 10/11 [00:18<00:01,  1.83s/it, loss=4.17, v_num=7szs]Epoch 28:  91%|█████████ | 10/11 [00:18<00:01,  1.83s/it, loss=4.18, v_num=7szs]
+Validation: 0it [00:00, ?it/s][A
+Validation:   0%|          | 0/1 [00:00<?, ?it/s][A
+Validation DataLoader 0:   0%|          | 0/1 [00:00<?, ?it/s][AWARNING:root:Found repetitions in sample 0
+WARNING:root:Found repetitions in sample 1
+
+Validation DataLoader 0: 100%|██████████| 1/1 [00:21<00:00, 21.56s/it][AEpoch 28: 100%|██████████| 11/11 [00:40<00:00,  3.64s/it, loss=4.18, v_num=7szs]Epoch 28: 100%|██████████| 11/11 [00:40<00:00,  3.64s/it, loss=4.18, v_num=7szs]
+                                                                      [AEpoch 28: 100%|██████████| 11/11 [00:40<00:00,  3.65s/it, loss=4.18, v_num=7szs]Epoch 28:   0%|          | 0/11 [00:00<?, ?it/s, loss=4.18, v_num=7szs]         Epoch 29:   0%|          | 0/11 [00:00<?, ?it/s, loss=4.18, v_num=7szs]Epoch 29:   9%|▉         | 1/11 [00:02<00:24,  2.45s/it, loss=4.18, v_num=7szs]Epoch 29:   9%|▉         | 1/11 [00:02<00:24,  2.46s/it, loss=4.22, v_num=7szs]Epoch 29:  18%|█▊        | 2/11 [00:04<00:18,  2.04s/it, loss=4.22, v_num=7szs]Epoch 29:  18%|█▊        | 2/11 [00:04<00:18,  2.04s/it, loss=4.26, v_num=7szs]Epoch 29:  27%|██▋       | 3/11 [00:05<00:15,  1.89s/it, loss=4.26, v_num=7szs]Epoch 29:  27%|██▋       | 3/11 [00:05<00:15,  1.89s/it, loss=4.24, v_num=7szs]Epoch 29:  36%|███▋      | 4/11 [00:07<00:13,  1.86s/it, loss=4.24, v_num=7szs]Epoch 29:  36%|███▋      | 4/11 [00:07<00:13,  1.86s/it, loss=4.23, v_num=7szs]Epoch 29:  45%|████▌     | 5/11 [00:09<00:10,  1.83s/it, loss=4.23, v_num=7szs]Epoch 29:  45%|████▌     | 5/11 [00:09<00:10,  1.83s/it, loss=4.24, v_num=7szs]Epoch 29:  55%|█████▍    | 6/11 [00:10<00:08,  1.79s/it, loss=4.24, v_num=7szs]Epoch 29:  55%|█████▍    | 6/11 [00:10<00:08,  1.79s/it, loss=4.24, v_num=7szs]Epoch 29:  64%|██████▎   | 7/11 [00:12<00:07,  1.79s/it, loss=4.24, v_num=7szs]Epoch 29:  64%|██████▎   | 7/11 [00:12<00:07,  1.79s/it, loss=4.23, v_num=7szs]Epoch 29:  73%|███████▎  | 8/11 [00:14<00:05,  1.78s/it, loss=4.23, v_num=7szs]Epoch 29:  73%|███████▎  | 8/11 [00:14<00:05,  1.78s/it, loss=4.25, v_num=7szs]Epoch 29:  82%|████████▏ | 9/11 [00:16<00:03,  1.78s/it, loss=4.25, v_num=7szs]Epoch 29:  82%|████████▏ | 9/11 [00:16<00:03,  1.78s/it, loss=4.24, v_num=7szs]Epoch 29:  91%|█████████ | 10/11 [00:17<00:01,  1.78s/it, loss=4.24, v_num=7szs]Epoch 29:  91%|█████████ | 10/11 [00:17<00:01,  1.78s/it, loss=4.24, v_num=7szs]
+Validation: 0it [00:00, ?it/s][A
+Validation:   0%|          | 0/1 [00:00<?, ?it/s][A
+Validation DataLoader 0:   0%|          | 0/1 [00:00<?, ?it/s][AWARNING:root:Found repetitions in sample 0
+WARNING:root:Found repetitions in sample 1
+
+Validation DataLoader 0: 100%|██████████| 1/1 [00:23<00:00, 23.19s/it][AEpoch 29: 100%|██████████| 11/11 [00:41<00:00,  3.75s/it, loss=4.24, v_num=7szs]Epoch 29: 100%|██████████| 11/11 [00:41<00:00,  3.75s/it, loss=4.24, v_num=7szs]
+                                                                      [AEpoch 29: 100%|██████████| 11/11 [00:41<00:00,  3.75s/it, loss=4.24, v_num=7szs]`Trainer.fit` stopped: `max_epochs=30` reached.
+Epoch 29: 100%|██████████| 11/11 [00:46<00:00,  4.21s/it, loss=4.24, v_num=7szs]
+best model saved: /mnt/data/ai4phys/sunyu/nougat/result/nougat/20231203_105326/epoch=22-step=92.ckpt
+wandb: Waiting for W&B process to finish... (success).
+wandb: 
+wandb: Run history:
+wandb:               epoch ▁▁▁▂▂▂▂▂▃▃▃▃▃▄▄▄▄▄▄▅▅▅▅▅▆▆▆▆▆▇▇▇▇▇████
+wandb:       learning_rate ▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁
+wandb:     train/grad_norm ▆▄▅▁▄█▆▃
+wandb:          train/loss █▅▆▇▁▃█▇
+wandb: train/loss_position ▄▅▃▁▂█▅▅
+wandb:    train/loss_token █▅▆█▁▁█▆
+wandb: trainer/global_step ▁▁▁▂▂▂▂▂▃▃▃▃▃▃▃▃▄▄▄▄▅▅▅▅▅▅▆▆▆▆▆▇▇▇▇▇▇███
+wandb:            val/bleu ▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁
+wandb:       val/edit_dist ▆▄▅▃▆▇▆▅▁▄▃█▃▆▅█▆▄▆▆▅▃▆▅▅█▂▇▃▅
+wandb:       val/f_measure ▃▃▃▅▃▁▂▄▅▅▅▃▇▃▂▂▄▄▃▆█▆▃▄▅▃▄▂▄▃
+wandb:            val/loss ▇▅▇▆▇▅▄▇▇▆▆▇█▇▅▇█▆██▇▇▁▆▆▇▇▄▇▇
+wandb:   val/loss_position █▅▂▂▂▃▂▂▂▁▂▃▆▃▅▂▅▃▄▄▃▅▁▁▄▄▂▂▇▂
+wandb:      val/loss_token ▆▅█▆▇▄▅▇▇▇▆▇▇▇▄▇█▆██▇▇▁▇▆▇▇▄▆▇
+wandb:       val/precision ▃▃▃▅▃▁▂▄▄▅▅▃▇▃▃▂▄▄▄▅█▆▆▃▅▂▄▃▅▂
+wandb:          val/recall ▃▃▃▅▃▁▂▄▅▆▅▃▇▃▂▂▄▄▃▆█▇▃▄▅▃▄▂▄▃
+wandb:            val_loss ▇▅▇▆▇▅▄▇▇▆▆▇█▇▅▇█▆██▇▇▁▆▆▇▇▄▇▇
+wandb: 
+wandb: Run summary:
+wandb:               epoch 29
+wandb:       learning_rate 0.0
+wandb:     train/grad_norm 372816.65625
+wandb:          train/loss 4.32225
+wandb: train/loss_position 2.06774
+wandb:    train/loss_token 2.2545
+wandb: trainer/global_step 119
+wandb:            val/bleu 0.0
+wandb:       val/edit_dist 0.78713
+wandb:       val/f_measure 0.01152
+wandb:            val/loss 4.46633
+wandb:   val/loss_position 1.79667
+wandb:      val/loss_token 2.66966
+wandb:          val/meteor nan
+wandb:       val/precision 0.01957
+wandb:          val/recall 0.00817
+wandb:            val_loss 4.46633
+wandb: 
+wandb: 🚀 View run nougat at: https://wandb.ai/llm4wholescience/Nougat/runs/khnn7szs
+wandb: ️⚡ View job at https://wandb.ai/llm4wholescience/Nougat/jobs/QXJ0aWZhY3RDb2xsZWN0aW9uOjEyMDQxOTk3Mg==/version_details/v1
+wandb: Synced 6 W&B file(s), 0 media file(s), 0 artifact file(s) and 0 other file(s)
+wandb: Find logs at: ./wandb/run-20231203_105359-khnn7szs/logs
