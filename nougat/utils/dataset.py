@@ -215,7 +215,7 @@ class NougatDataset(Dataset):
         dataset_path: str,
         nougat_model: PreTrainedModel,
         max_length: int,
-        prompt_label_length: int,
+        prompt_label_length: int = 1,
         split: str = "train",
         root_name: str = "",
     ):
@@ -248,10 +248,10 @@ class NougatDataset(Dataset):
             input_tensor : preprocessed image
             input_ids : tokenized gt_data
         """
-        # sample: SciPDFDataset.getitem(): return {"image": img, "prompt":data.pop("prompt"),"label": data.pop("label"),"pretext":data.pop("pretext"), "meta": data}
+        # SciPDFDataset.getitem(): return {"image": img, "prompt":data.pop("prompt"),"label": data.pop("label"),"pretext":data.pop("pretext"), "meta": data}
         # 全文prompt，len(pretext)=len(prompt)，len(label)=0
         # 非全文prompt，len(pretext) > len(prompt)= len(label)
-        data = self.dataset.__getitem__(idx)
+        # data = self.dataset.__getitem__(idx)
         sample = self.dataset[idx]  
         if sample is None:
             # if sample is broken choose another randomly

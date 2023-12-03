@@ -9,6 +9,7 @@ class PositionDecoder(nn.Module):
         self.num_layers = num_layers
         h = [hidden_dim] * (num_layers - 1)
         self.layers = nn.ModuleList(nn.Linear(n, k) for n, k in zip([input_dim] + h, h + [output_dim])) # [(input_dim,hidden_dim),(hidden_dim,hidden_dim),(hidden_dim,output_dim)]
+        self.layernorms = nn.ModuleList(nn.LayerNorm(n) for n in [input_dim] + h) 
         self.image_size = image_size
         
     
@@ -20,8 +21,9 @@ class PositionDecoder(nn.Module):
         num_layer,bs,num_heads,input_len,encoder_len = heatmap.shape  # [4,bs,16,len,588]
         heatmap = heatmap.permute(1,3,4,0,2).reshape(bs,input_len,encoder_len,-1)  # [bs,len,588,4,16] -> [bs,len,588,64]
         x = self.head_linear(heatmap).squeeze(-1)   # [bs,len,588,64]->[bs,len,588,1]->[bs,len,588]
-        for i, layer in enumerate(self.layers):
-            x = F.relu(layer(x)) if i < self.num_layers - 1 else layer(x)
+        for i in range(len(self.layers)):
+            x = self.layernorms[i](x)
+            x = F.gelu(self.layers[i](x)) if i < self.num_layers - 1 else self.layers[i](x)
         x = x.sigmoid() # [bs,len,4] 标准化的坐标
         x1 = x[:,:,0]*self.image_size[1]   # [bs,len]
         y1 = x[:,:,1]*self.image_size[0]

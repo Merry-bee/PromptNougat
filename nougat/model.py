@@ -981,7 +981,7 @@ class PromptBartForCausalLM(PromptBartPreTrainedModel):
         prompt_hidden_states = self.prompt_encoder(points=None,boxes=prompt[:,:-1,:,:]) if prompt is not None else None    # [bs,len,2,2]->[bs,len,2,d]
 
         bs = encoder_hidden_states.shape[0]
-        img_coord = torch.empty((bs,self.image_embedding_size[0],self.image_embedding_size[1],2,2))    # [bs,28,21,2,2]
+        img_coord = torch.empty((bs,self.image_embedding_size[0],self.image_embedding_size[1],2,2),dtype=torch.bfloat16)    # [bs,28,21,2,2]
         y1,x1=torch.meshgrid(torch.arange(self.image_embedding_size[0]),torch.arange(self.image_embedding_size[1]))
         y2,x2=torch.meshgrid(torch.arange(1,self.image_embedding_size[0]+1),torch.arange(1,self.image_embedding_size[1]+1))
         img_coord[:,:,:,0,0],img_coord[:,:,:,0,1],img_coord[:,:,:,1,0],img_coord[:,:,:,1,1]=x1,y1,x2,y2
@@ -1110,8 +1110,8 @@ class PromptBartForCausalLM(PromptBartPreTrainedModel):
         if labels is not None:      # train/validation
             labels = labels.to(logits.device)   # [bs,length], 用padding补齐
             loss_token,loss_position = cal_loss(logits=logits.view(-1, self.config.vocab_size), labels=labels.view(-1),prompt_pred=prompt_pred,prompt_true=prompt[:,1:,:,:])  # logits[bs*label_len,50000],labels[bs*label_len]
-            loss = self.alpha*loss_token+(1-self.alpha)*loss_position
-
+            # loss = self.alpha*loss_token+(1-self.alpha)*loss_position
+            loss=loss_token+loss_position
         if not return_dict:
             output = (logits,) + outputs[1:]
             return (loss,) + output if loss is not None else output

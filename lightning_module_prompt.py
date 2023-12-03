@@ -94,15 +94,12 @@ class PromptModelPLModule(pl.LightningModule):
     def validation_step(self, batch, batch_idx, dataset_idx=0):
         if batch is None:
             return
-        image_tensors,pre_input_ids, attention_masks, label_ids, prompts = batch
+        image_tensors,input_ids, attention_masks, labels, prompts = batch
         if image_tensors is None:
             return
      
         # validation data with prompt, loss=one token
         # 处理方式同model.py/PromptNougatModel/forward()
-        input_ids = pre_input_ids
-        labels = label_ids   # [bs,len(label)]
-        
         output = self.model.inference(
             image_tensors=image_tensors,    # shape=[bs,3,588,1024]
             input_ids = input_ids,
@@ -141,7 +138,7 @@ class PromptModelPLModule(pl.LightningModule):
             "val/" + key: sum(values) / len(values) for key, values in metrics.items()
         }
         loss_token,loss_position = cal_loss(logits=logits.view(-1,self.model.decoder.tokenizer.vocab_size),labels=labels.view(-1),prompt_pred=output['prompt_pred'],prompt_true=prompts[:,1:,:,:])
-        loss=loss_token+loss_position
+        loss = loss_token+loss_position
         scores["val/loss_token"] = loss_token
         scores["val/loss_position"] = loss_position
         scores["val/loss"] = loss

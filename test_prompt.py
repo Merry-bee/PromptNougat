@@ -11,20 +11,22 @@ import logging
 from multiprocessing import Pool
 from collections import defaultdict
 from pathlib import Path
-
+import re
 import numpy as np
 import torch
 from tqdm import tqdm
 
-from nougat import NougatModel
+from nougat import PromptNougatModel
 from nougat.metrics import compute_metrics
 from nougat.utils.checkpoint import get_checkpoint
 from nougat.utils.dataset import NougatDataset
-from lightning_module_prompt import PromptDataPLModule
-
+from lightning_module_prompt import PromptDataPLModule, PromptModelPLModule
+from nougat.cal_loss import cal_loss
 
 def test(args):
-    pretrained_model = NougatModel.from_pretrained(args.checkpoint).to(torch.bfloat16)
+    pretrained_model = PromptNougatModel.from_pretrained(args.model_path).to(torch.bfloat16)
+    if args.ckpt_path is not None:
+        pretrained_model.load_state_dict({re.sub(r'^model.decoder','decoder',re.sub(r'^model.encoder','encoder',k)):v for k,v in torch.load(args.ckpt_path)['state_dict'].items()})
     if torch.cuda.is_available():
         pretrained_model.to("cuda")
 
@@ -52,26 +54,36 @@ def test(args):
         shuffle=args.shuffle,
         collate_fn=PromptDataPLModule.ignore_none_collate,
     )
-
+    # 同validation_step()
     for idx, sample in tqdm(enumerate(dataloader), total=len(dataloader)):
         if sample is None:
             continue
-        image_tensors, decoder_input_ids, attention_mask, prompt = sample
+        sample = [n.to(pretrained_model.device) for n in sample]
+        image_tensors, input_ids,attention_masks,label_ids,prompts = sample
         if image_tensors is None:
             return
-        if len(predictions) >= args.num_samples:
-            break
-        ground_truth = pretrained_model.decoder.tokenizer.batch_decode(
-            decoder_input_ids, skip_special_tokens=True
-        )
+        # if len(predictions) >= args.num_samples:
+        #     break
         outputs = pretrained_model.inference(
-            image_tensors=image_tensors,
-            return_attentions=False,
-            prompt = prompt,
-            input_ids = decoder_input_ids,
-        )["predictions"]
-        predictions.extend(outputs)
+            image_tensors=image_tensors,    
+            input_ids = input_ids,
+            attention_mask=attention_masks,
+            return_attentions=True,
+            prompt=prompts.bfloat16(),
+            validation=True,
+        )
+        ground_truth = pretrained_model.decoder.tokenizer.batch_decode(
+            label_ids, skip_special_tokens=True
+        )
+        predictions.extend(outputs["predictions"])
         ground_truths.extend(ground_truth)
+        
+        logits = outputs["logits"][0]  # pred id: [bs,len,50000] 
+        loss_token,loss_position = cal_loss(logits=logits.view(-1,pretrained_model.decoder.tokenizer.vocab_size),labels=label_ids.view(-1),prompt_pred=outputs['prompt_pred'],prompt_true=prompts[:,1:,:,:])
+        # loss = pretrained_model.decoder.model.alpha*loss_token+(1-pretrained_model.decoder.model.alpha)*loss_position
+        loss=loss_token+loss_position
+        print(f'loss_token:{loss_token},loss_position:{loss_position},loss:{loss_token+loss_position}')
+        
         with Pool(args.batch_size) as p:
             _metrics = p.starmap(compute_metrics, iterable=zip(outputs, ground_truth))
             for m in _metrics:
@@ -101,7 +113,8 @@ def test(args):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--checkpoint", "-c", type=Path, default=None)
+    parser.add_argument("--model_path", type=Path, default=None)
+    parser.add_argument("--ckpt_path", type=Path, default=None)
     parser.add_argument("-d", "--dataset", type=str, required=True)
     parser.add_argument("--split", type=str, default="test")
     parser.add_argument(
@@ -111,6 +124,6 @@ if __name__ == "__main__":
     parser.add_argument("--shuffle", action="store_true")
     parser.add_argument("--batch_size", "-b", type=int, default=10)
     args, left_argv = parser.parse_known_args()
-    args.checkpoint = get_checkpoint(args.checkpoint)
+    args.model_path = get_checkpoint(args.model_path)
 
     predictions = test(args)
