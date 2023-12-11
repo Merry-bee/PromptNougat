@@ -80,7 +80,6 @@ def diou_loss(pred,target,epsilon=1e-5,alpha=20):
     
     diou_loss = (1-iou+alpha*d2/896/672)
 
-
     return diou_loss,iou
 
          
