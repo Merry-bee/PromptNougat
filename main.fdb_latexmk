@@ -1,0 +1,25 @@
+# Fdb version 4
+["dvips"] 0 "main.dvi" "main.ps" "main" 0 -1
+  "main.dvi" 0 -1 0 "latex"
+  (generated)
+  "main.ps"
+  (rewritten before read)
+["latex"] 1702257034 "data/tmp/2110.07274/main.tex" "main.dvi" "main" 1702257044 2
+  "/mnt/workspace/zhonghansen/texlive/2023/texmf-dist/tex/latex/base/article.cls" 1667332637 20144 d5ecf0a5140c8d8d8b72cbe86e320eff ""
+  "/mnt/workspace/zhonghansen/texlive/2023/texmf-dist/tex/latex/base/size10.clo" 1667332637 8448 c33a4e1cb35cee9b33c2b21033b73e39 ""
+  "/mnt/workspace/zhonghansen/texlive/2023/texmf-dist/web2c/texmf.cnf" 1677365944 40745 87bb86a62d462f93a1efc6b0c65c872e ""
+  "/mnt/workspace/zhonghansen/texlive/2023/texmf-var/web2c/pdftex/latex.fmt" 1702095050 7883892 90ebeb433dd2a5e5f6d6d32ca86c87c3 ""
+  "/mnt/workspace/zhonghansen/texlive/2023/texmf.cnf" 1702094894 628 97221c99f139e1ef36c747c9aab47005 ""
+  "data/tmp/2110.07274/main.tex" 1702217855 12580 2e8c3e690873376a490902be7055b345 ""
+  "main.aux" 1702256961 32 3985256e7290058c681f74d7a3565a19 "latex"
+  "spconf.sty" 0 -1 0 ""
+  (generated)
+  "main.aux"
+  "main.dvi"
+  "main.log"
+  (rewritten before read)
+["ps2pdf"] 0 "main.ps" "main.pdf" "main" 0 -1
+  "main.ps" 0 -1 0 "dvips"
+  (generated)
+  "main.pdf"
+  (rewritten before read)
