@@ -1,4 +1,8 @@
 nltk
 Levenshtein
+pymupdf
+htmlmin
+orjson
+pylatexenc
 pip install torchvision
 pip install -U 'wandb>=0.12.10'

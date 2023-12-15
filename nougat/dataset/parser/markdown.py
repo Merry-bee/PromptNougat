@@ -383,14 +383,16 @@ def format_document(
     parts.append("\n")
     parts.extend(format_children(doc, keep_refs))
     text = "".join(parts)
+    text = re.sub(r"\[(FOOTNOTE|FIGURE|TABLE)(.*?)\]",r"[\1]",text)
+    text = re.sub(r'\[FOOTNOTE\]|\[ENDFOOTNOTE\]|\[FIGURE\]|\[ENDFIGURE\]|\[TABLE\]|\[ENDTABLE\]','',text)
     text = text.replace("\xa0", " ")  # replace non-breakable spaces
     text = re.sub(r" $", "", text, flags=re.MULTILINE)
     text = re.sub(r"\n[\t ]*$", "\n", text, flags=re.MULTILINE)
     text = re.sub(r"(?<!\n) {2,}", " ", text)
     text = re.sub(r"\n{3,}", "\n\n", text).lstrip()
     figures = {unidecode(m[0] + m[1]): m[2].strip() for m in figure_regex.findall(text)}
-    text = figure_regex.sub(
-        r"[\1\2][END\1]",
-        text,
-    )
+    # text = figure_regex.sub(
+    #     r"[\1\2][END\1]",
+    #     text,
+    # )
     return text, figures

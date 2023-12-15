@@ -4,6 +4,8 @@ Copyright (c) Meta Platforms, Inc. and affiliates.
 This source code is licensed under the MIT license found in the
 LICENSE file in the root directory of this source tree.
 """
+import sys
+sys.path.append('/mnt/workspace/sunyu/nougat')
 import argparse
 from collections import Counter
 from copy import deepcopy
@@ -515,9 +517,9 @@ if __name__ == "__main__":
     args = parser.parse_args()
     md = open(args.md, "r", encoding="utf-8").read().replace("\xa0", " ")
     pdf = fitz.open(args.pdf)
-    try:
+    if args.figure:
         fig_info = json.load(open(args.figure, "r", encoding="utf-8"))
-    except FileNotFoundError:
+    else:
         fig_info = None
     pages, meta = split_markdown(md, pdf, fig_info,min_num_words=22)
     if args.out:

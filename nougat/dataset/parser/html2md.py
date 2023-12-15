@@ -4,6 +4,8 @@ Copyright (c) Meta Platforms, Inc. and affiliates.
 This source code is licensed under the MIT license found in the
 LICENSE file in the root directory of this source tree.
 """
+import sys
+sys.path.append('/mnt/workspace/sunyu/nougat')
 import argparse
 from pathlib import Path
 from typing import List, Optional
@@ -41,6 +43,7 @@ def check_file_path(paths: List[Path], wdir: Optional[Path] = None) -> List[str]
 
 
 if __name__ == "__main__":
+    # python nougat/dataset/parser/html2md.py --html data/arxiv_color/0710.2897/outputs/color.html --out data/arxiv_color/0710.2897/outputs/color.mmd
     parser = argparse.ArgumentParser()
     parser.add_argument("--html", type=Path, nargs="+", help="HTML file", required=True)
     parser.add_argument("--out", type=Path, help="Output file", required=True)

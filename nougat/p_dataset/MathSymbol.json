@@ -1,0 +1,31 @@
+[
+    "\\leftarrow",
+    "\\rightarrow",
+    "\\leftrightarrow",
+    "\\vert",
+
+    "\\int",
+    "\\sum",
+    "\\lim", 
+    "\\infty",
+    "\\inf",
+    "\\sup",
+    
+    "\\sin", 
+    "\\cos", 
+    "\\tan", 
+    
+    "\\max", 
+    "\\min", 
+    
+    "\\log", 
+    "\\ln", 
+    "\\exp",
+    "\\sqrt",
+    
+    "\\equiv",
+    "\\in",
+
+    "\\hat"
+    
+]
