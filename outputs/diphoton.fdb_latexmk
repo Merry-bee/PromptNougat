@@ -1,0 +1,17 @@
+# Fdb version 4
+["dvips"] 1702640003 "outputs/diphoton.dvi" "outputs/diphoton.ps" "outputs/diphoton" 1702640003 2
+  "outputs/diphoton.dvi" 0 -1 0 "latex"
+  (generated)
+  "outputs/diphoton.ps"
+  (rewritten before read)
+["latex"] 1702640003 "diphoton.tex" "outputs/diphoton.dvi" "diphoton" 1702640003 2
+  (generated)
+  "outputs/diphoton.aux"
+  "outputs/diphoton.dvi"
+  "outputs/diphoton.log"
+  (rewritten before read)
+["ps2pdf"] 0 "outputs/diphoton.ps" "outputs/diphoton.pdf" "outputs/diphoton" 1702640003 -1
+  "outputs/diphoton.ps" 0 -1 0 "dvips"
+  (generated)
+  "outputs/diphoton.pdf"
+  (rewritten before read)

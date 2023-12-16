@@ -184,8 +184,8 @@ def parse_latexml_children(html: BeautifulSoup, parent: Element) -> None:
                     if potential_num.isnumeric():
                         parent.append(TextElement(content=potential_num))
                         resolved = True
-            if not resolved:
-                raise ValueError("missing reference detected")
+            # if not resolved:
+            #     raise ValueError("missing reference detected")
         elif sv.match(
             ".ltx_bibblock, .ltx_role_author, .ltx_contact, .ltx_role_email, .ltx_role_affiliation",
             child,
@@ -267,7 +267,12 @@ def parse_latexml_children(html: BeautifulSoup, parent: Element) -> None:
                         )
                     )
                 else:
-                    raise ValueError('unusable reference "%s"' % text)
+                    # raise ValueError('unusable reference "%s"' % text)
+                    in_ref.append(
+                        TextElement(
+                            content=re.sub(r"\D", "", target.partition(".bib")[2])
+                        )
+                    )
                 doc = parent.find_parent(Document)
                 if doc:
                     doc.add_inline_ref(in_ref)
