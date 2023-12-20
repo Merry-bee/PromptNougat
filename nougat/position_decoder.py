@@ -41,6 +41,31 @@ class PositionDecoder(nn.Module):
         return x1,y1,x2,y2
         
         
+def iou(pred,target,epsilon=1e-5):
+    '''
+    args: 
+    pred/target: [bs,length,2,2]
+    
+    '''
+    pred = pred.reshape(-1,2,2) # [bs*len,2,2]
+    target = target.reshape(-1,2,2) 
+    
+    
+    inter_x1 = torch.max(pred[:,0,0],target[:,0,0])
+    inter_y1 = torch.max(pred[:,0,1],target[:,0,1])
+    inter_x2 = torch.min(pred[:,1,0],target[:,1,0])
+    inter_y2 = torch.min(pred[:,1,1],target[:,1,1])
+    # 确保交集面积不小于0
+    inter_area = torch.clamp(inter_x2-inter_x1,min=0)*torch.clamp(inter_y2-inter_y1,min=0)
+    pred_area = (pred[:,1,0]-pred[:,0,0])*(pred[:,1,1]-pred[:,0,1])
+    target_area = (target[:,1,0]-target[:,0,0])*(target[:,1,1]-target[:,0,1])
+    union_area = pred_area + target_area - inter_area
+    # target_area=inter_area=0 => padding token
+    mask = torch.arange(torch.where(target_area>0)[0][-1]+3)    # [...,-1,</s>,</work>]
+    iou = (inter_area[mask]/(union_area[mask]+epsilon)).mean()
+    
+
+    return iou
     
 def diou_loss(pred,target,epsilon=1e-5,alpha=20):
     '''

@@ -1,0 +1,24 @@
+0. html 2 mmd fail: 0704.0001
+1. tex 2 pdf fail: 0704.0006
+2. tex 2 pdf fail: 0704.0007
+3. html 2 mmd fail: 0704.0008
+4. tex 2 pdf fail: 0704.0009
+5. tex 2 pdf fail: 0704.0015
+6. colored_file error: 0704.0016 :'utf-8' codec can't decode byte 0xa3 in position 1604: invalid start byte
+7. html 2 mmd fail: 0704.0017
+8. html 2 mmd fail: 0704.0018
+9. tex 2 pdf fail: 0704.0020
+10. tex 2 pdf fail: 0704.0023
+11. colored_file error: 0704.0025 :'utf-8' codec can't decode byte 0x92 in position 5406: invalid start byte
+12. tex 2 pdf fail: 0704.0027
+13. html 2 mmd fail: 0704.0029
+14. html 2 mmd fail: 0704.0030
+15. html 2 mmd fail: 0704.0032
+16. html 2 mmd fail: 0704.0039
+17. tex 2 pdf fail: 0704.0041
+18. colored_file error: 0704.0043 :'utf-8' codec can't decode byte 0x96 in position 3700: invalid start byte
+19. tex 2 pdf fail: 0704.0044
+20. html 2 mmd fail: 0704.0046
+21. tex 2 pdf fail: 0704.0048
+22. html 2 mmd fail: 0704.0051
+23. html 2 mmd fail: 0704.0052
