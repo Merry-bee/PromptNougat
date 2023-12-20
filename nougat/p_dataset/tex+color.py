@@ -173,7 +173,7 @@ def colored_file(tex_file):
     lines = re.split(r'\n\n|(?=\\author)|(?=\\affiliation)',lines)
     
     for i,line in enumerate(lines):
-        line = line.strip().replace('\n','')
+        line = line.strip().replace('\n',' ')
         if '\\def' in line:
             continue
         # 去除affiliation和author内部的花括号，否则可能编译出错
