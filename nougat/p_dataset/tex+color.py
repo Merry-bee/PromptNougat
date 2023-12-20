@@ -78,31 +78,43 @@ def colored_text(text):
                 if word in GREEK.keys() or word in MATH:
                     new_seg += colored_word(word)
                     seg_idx += tag_res.span()[1]
-                # 需要和后面括号内容一起保留原样的tag
+                    continue
+                # 需要和后面[]*{}内容一起保留原样的tag
                 elif word in ['\\label','\\begin','\\end','\\includegraphics','\\resizebox','\\cline','\\multicolumn','\\multirow','\\pagestyle','\\email',
                               '\\input','\\bibliographystyle','\\bibliography','\\newcommand','\\usepackage','\\preprint','\\ref','\\url','\\bibitem','\\bibinfo','\\bibnamefont'] \
-                                or any(banword in word for banword in ['\\cite','\\ref']):  # \\citer,\\citen,...
+                                or any(banword in word for banword in ['\\cite','\\ref','hspace','vspace']):  # \\citep,\\citen,\\hspace*
                     ignore_res = re.match(r'\\[A-Za-z]+(?:\[.*?\])*(?:\{.*?\}){1,2}',seg[seg_idx:])
                     new_seg += ignore_res.group(0) if ignore_res else word
                     seg_idx += ignore_res.span()[1] if ignore_res else tag_res.span()[1]
-                # 需要和后面的tag合并在一起: \\left(  \\left\\{  \\left\vert
-                # elif word in ['\\left','\\right']:
-                #     ltag_res = re.match(r'\\[A-Za-z]+(\\[A-Za-z]+|\(|\)|\[|\]|\\\{|\\\}|\|)',seg[seg_idx:])
-                #     new_seg += colored_word(ltag_res.group(0)) if ltag_res else word
-                #     seg_idx += ltag_res.span()[1] if ltag_res else tag_res.span()[1]
+                    continue
+                # 需要和后面合并在一起: \\left(  \\left\\{  \\left\vert \\big( \\Bigg\{
+                elif re.match(r'(\\[A-Za-z]+)(\(|\)|\[|\]|\\{|\\}|<|>|\||\\[A-Za-z]+)',seg[seg_idx:]):
+                    ltag_res = re.match(r'(\\[A-Za-z]+)(\(|\)|\[|\]|\\{|\\}|<|>|\||\\[A-Za-z]+)',seg[seg_idx:])
+                    lword = ltag_res.group(0)
+                    if lword in MATH:
+                        new_seg += colored_word(ltag_res.group(0)) 
+                        seg_idx += ltag_res.span()[1] 
+                    else:   # 按照其他tag处理，后面的括号是勿匹配
+                        new_seg +=  word
+                        seg_idx +=  tag_res.span()[1]
                 # 保留原样，不加颜色不忽略后文的tag：\it \frac等   
                 else:
                     new_seg += word
                     seg_idx += tag_res.span()[1]
                 continue
-            # $$
-            # formular_res = re.match(r'\$.*?\$',seg[seg_idx:])
-            # if formular_res:
-            #     new_seg += formular_res.group(0)
-            #     seg_idx += formular_res.span()[1]
-            #     continue
-            
-            # invisible符号：_ ^ 等：不加颜色，保留原样
+            # (x,y)：坐标，保持不变
+            coord_res = re.match(r'\(-?\d+,-?\d+\)',seg[seg_idx:])
+            if coord_res:
+                new_seg += coord_res.group(0)
+                seg_idx += coord_res.span()[1]
+                continue
+            # 制表符：删不净：保持不变
+            vh_res = re.match(r'-?\d+(pt|mm|bp|cm|em|ex|in)',seg[seg_idx:])
+            if vh_res:
+                new_seg += vh_res.group(0)
+                seg_idx += vh_res.span()[1]
+                continue
+            # invisible符号：_, ^, { 等：不加颜色，保留原样
             invisible_res = re.match(r'(\{\[\})|_|\^|\||\{|\}|\$|\\\\|\\$|\[.*\]|&|%|\s+|\*|~|#|\[|\]|(natexlab)|(urlprefix)|\\(!|,|;)',seg[seg_idx:])
             if invisible_res:
                 # 上下标没加括号：后面必为一个字母或希腊字母，这时最好加上括号
@@ -526,7 +538,7 @@ if __name__ == '__main__':
     # repair_ref(origin_pdf_file='data/arxiv_all_files/0704.0001/origin.pdf',color_pdf_file='data/arxiv_all_files/0704.0001/diphoton.pdf')
    
     # png_dir = 'data/arxiv_train_data/png/0704.0008/0704.0008'
-    # dct_color=colored_dct('data/arxiv_all_files/0704.0008/color.mmd')
+    # dct_color=colored_dct('data/arxiv_all_files/0704.0082/color.mmd')
     # pdf_file='data/arxiv_color/0704.0008/outputs/genscalar.pdf'
     # save_data_path = 'data/arxiv_train_data/train.jsonl'
     # match_datapair(dct_color,pdf_file,png_dir,save_data_path)
@@ -534,5 +546,5 @@ if __name__ == '__main__':
     with open('data/pdf_list/latex_dir.txt','r') as fi:
         lines = fi.readlines()
     fold_lst = [line.strip() for line in lines]
-    main(fold_lst,start_idx=0)
+    main(fold_lst,start_idx=26)
     

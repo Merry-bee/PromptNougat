@@ -17,6 +17,22 @@
     
     "\\max", 
     "\\min", 
+    "\\big(", "\\Big(", "\\bigg(", "\\Bigg(",
+    "\\big)", "\\Big)", "\\bigg)", "\\Bigg)",
+    "\\big[", "\\Big[", "\\bigg[", "\\Bigg[",
+    "\\big]", "\\Big]", "\\bigg]", "\\Bigg]",
+    "\\big\\{", "\\Big\\{", "\\bigg\\{", "\\Bigg\\{",
+    "\\big\\}", "\\Big\\}", "\\bigg\\}", "\\Bigg\\}",
+    "\\big|", "\\Big|", "\\bigg|", "\\Bigg|",
+    "\\bigoplus", "\\Bigoplus", "\\bigotimes", "\\Bigotimes",
+    "\\bigcup", "\\Bigcup", "\\bigcap", "\\Bigcap",
+    "\\left(", "\\right)",
+    "\\left[", "\\right]",
+    "\\left\\{", "\\right\\}",
+    "\\left<", "\\right>",
+    "\\left\\|", "\\right\\|",
+    "\\left\\langle", "\\right\\rangle",
+    "\\left\\vert", "\\right\\vert",
     
     "\\log", 
     "\\ln", 
@@ -25,6 +41,10 @@
     "\\otimes",
     
     "\\equiv",
-    "\\in"
+    "\\in",
+
+    "\\tr",
+    "\\dagger"
+
     
 ]
