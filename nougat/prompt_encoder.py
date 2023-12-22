@@ -51,7 +51,7 @@ class PromptEncoder(nn.Module):
         """
         super().__init__()
         self.embed_dim = embed_dim
-        self.input_image_size = input_image_size            # 原始image_size 
+        self.input_image_size = input_image_size            # 原始image_size ； 若坐标已归一化，输入(1,1)
         self.image_embedding_size = image_embedding_size    # encoder输出的image_size
         self.scaling_size = input_image_size[0]//image_embedding_size[0]
         self.pe_layer = PositionEmbeddingRandom(embed_dim // 2)
