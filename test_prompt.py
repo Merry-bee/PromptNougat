@@ -22,7 +22,7 @@ from nougat.utils.checkpoint import get_checkpoint
 from nougat.utils.dataset import NougatDataset
 from lightning_module_prompt import PromptDataPLModule, PromptModelPLModule
 from nougat.cal_loss import cal_loss
-
+from nougat.visualization import visual_box
 
 def show_gt(model,label_ids,prompt_true):
     token_lst = model.decoder.tokenizer.batch_decode(
@@ -63,6 +63,9 @@ def test(args):
         shuffle=args.shuffle,
         collate_fn=PromptDataPLModule.ignore_none_collate,
     )
+    if args.visualize:
+        with open(args.dataset,'r') as fi:
+            data_jsonl=fi.readlines()
     # 同validation_step()
     for idx, sample in tqdm(enumerate(dataloader), total=len(dataloader)):
         if sample is None:
@@ -81,20 +84,26 @@ def test(args):
             prompt=prompts[:,:-1,:,:].bfloat16(),
             validation=True,
         )
-        ground_truth = pretrained_model.decoder.tokenizer.batch_decode(
-            label_ids, skip_special_tokens=True
-        )
-        predictions.extend(outputs["predictions"])
+        
+        
+        # label_ids[0] vs. pred_label_ids
+        logits = outputs["logits"][0].view(-1,pretrained_model.decoder.tokenizer.vocab_size)  # pred id: [bs,len,50000] 
+        pred_label_ids = logits.max(dim=1).indices   # [seq_len]
+        
+        # sequences[0] vs. ground_truth[0]
+        sequences = pretrained_model.decoder.tokenizer.batch_decode(pred_label_ids.unsqueeze(0), skip_special_tokens=True)
+        predictions.extend(sequences)
+        ground_truth = pretrained_model.decoder.tokenizer.batch_decode(label_ids, skip_special_tokens=True)
         ground_truths.extend(ground_truth)
         
-        logits = outputs["logits"][0]  # pred id: [bs,len,50000] 
-        loss_token,loss_position,iou = cal_loss(logits=logits.view(-1,pretrained_model.decoder.tokenizer.vocab_size),labels=label_ids.view(-1),prompt_pred=outputs['prompt_pred'],prompt_true=prompts[:,1:,:,:])
-        # loss = pretrained_model.decoder.model.alpha*loss_token+(1-pretrained_model.decoder.model.alpha)*loss_position
-        loss=loss_token+loss_position
-        print(f'loss_token:{loss_token},loss_position:{loss_position},loss:{loss_token+loss_position}')
+        loss, loss_token,loss_position,iou = cal_loss(logits=logits,labels=label_ids.view(-1),prompt_pred=outputs['prompt_pred'],prompt_true=prompts[:,1:,:,:])
+        if args.visualize:
+            png_path = json.loads(data_jsonl[idx])['image']
+            visual_box(png_path=Path(args.dataset).parent/png_path,prompt_pred=outputs['prompt_pred'],prompt_true=prompts[:,1:,:,:],save_path=f'data/tmp/visual_png/{Path(png_path).name}',image_size = [672,896])
+        print(f'loss_token:{loss_token},loss_position:{loss_position},loss:{loss}')
         # visualization
         start,end = 0,11
-        show_gt(pretrained_model,label_ids[0].tolist()[start:end],prompt_true = prompts[0,1:,:,:].tolist()[start:end])
+        '''show_gt(pretrained_model,label_ids[0].tolist()[start:end],prompt_true = prompts[0,1:,:,:].tolist()[start:end])
         
         with Pool(args.batch_size) as p:
             _metrics = p.starmap(compute_metrics, iterable=zip(outputs, ground_truth))
@@ -120,7 +129,7 @@ def test(args):
         with open(args.save_path, "w") as f:
             json.dump(scores, f)
 
-    return predictions
+    return predictions'''
 
 
 if __name__ == "__main__":
@@ -133,8 +142,9 @@ if __name__ == "__main__":
         "--save_path", "-o", type=str, default=None, help="json file to save results to"
     )
     parser.add_argument("--num_samples", "-N", type=int, default=-1)
-    parser.add_argument("--shuffle", action="store_true")
+    parser.add_argument("--shuffle", type=bool, default=False)
     parser.add_argument("--batch_size", "-b", type=int, default=10)
+    parser.add_argument("--visualize",  type=bool, default=False)
     args, left_argv = parser.parse_known_args()
     args.model_path = get_checkpoint(args.model_path)
 

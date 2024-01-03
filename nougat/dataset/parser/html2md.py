@@ -41,7 +41,27 @@ def check_file_path(paths: List[Path], wdir: Optional[Path] = None) -> List[str]
                 files.extend([(pi.resolve()) for pi in p.parent.glob(p.name)])
     return list(set(files))
 
+def html2md(html,outp):
 
+    html = BeautifulSoup(
+        htmlmin.minify(
+            open(html, "r", encoding="utf-8").read().replace("\xa0", " "),
+            remove_all_empty_space=1,
+        ),
+        features="html.parser",
+    )
+    try:
+        doc = parse_latexml(html)
+    except ValueError as e:
+        print(e)
+        
+    if doc is None:
+        return
+    out, fig = format_document(doc, keep_refs=True)
+   
+    with open(outp, "w", encoding="utf-8") as f:
+        f.write(out)
+    
 if __name__ == "__main__":
     # python nougat/dataset/parser/html2md.py --html data/arxiv_color/0710.2897/outputs/color.html --out data/arxiv_color/0710.2897/outputs/color.mmd
     parser = argparse.ArgumentParser()

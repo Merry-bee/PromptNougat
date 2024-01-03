@@ -7,7 +7,7 @@
 import numpy as np
 import torch
 from torch import nn
-
+from nougat.visualization import visual_box
 from typing import Any, Optional, Tuple, Type
 
 from .common import LayerNorm2d
@@ -107,7 +107,7 @@ class PromptEncoder(nn.Module):
             # points: torch.tensor: [bs,n,2]:
             points = torch.cat([points, padding_point], dim=1)  #[bs*len,1+1,2]
         # 位置编码
-        point_embedding = self.pe_layer.forward_with_coords(points, self.input_image_size)
+        point_embedding = self.pe_layer.forward_with_coords(points)
         point_embedding = point_embedding.reshape(bs,seq_len,2,-1)
         return point_embedding
 
@@ -127,14 +127,15 @@ class PromptEncoder(nn.Module):
     # 这个 _embed_boxes 方法与 _embed_points 方法一起,
     # 实现了对点 prompt 和框 prompt 的完整 embedding 流程,
     # 可以为掩码解码器提供丰富多样的 prompt 表达, generate高质量的掩码输出。
-    def _embed_boxes(self, boxes: torch.Tensor) -> torch.Tensor:
+    def _embed_boxes(self, boxes: torch.Tensor,omit_ratio=0) -> torch.Tensor:
         """Embeds box prompts."""
         bs,seq_len = boxes.shape[0],boxes.shape[1]
         boxes = boxes + 0.5  # Shift to center of pixel
         coords = boxes.reshape(-1, 2, 2)    # [bs*len,2,2]
-        corner_embedding = self.pe_layer.forward_with_coords(coords, self.input_image_size)
-        corner_embedding[:, 0, :] += self.point_embeddings[0].weight    # left-up
-        corner_embedding[:, 1, :] += self.point_embeddings[1].weight    # right-bottom
+        corner_embedding = self.pe_layer.forward_with_coords(coords,omit_ratio=omit_ratio)    # corner_embedding:[bs*seq_len,2,1024]；coords<0(==-1)的emb为0,omit_ratio比例的为0
+        mask = (corner_embedding.reshape(bs*seq_len,-1)[:,:] == 0).all(dim=1)   # mask:[bs*seq_len]
+        corner_embedding[~mask, 0, :] += self.point_embeddings[0].weight    # left-up
+        corner_embedding[~mask, 1, :] += self.point_embeddings[1].weight    # right-bottom
         corner_embedding = corner_embedding.reshape(bs,seq_len,2,-1) # [bs*seq_len,2,d] -> [bs,seq_len,2,d]
         return corner_embedding
 
@@ -168,7 +169,24 @@ class PromptEncoder(nn.Module):
     def _get_device(self) -> torch.device:
         return self.point_embeddings[0].weight.device
 
-
+    def add_random_noise(
+        self,
+        boxes):
+        '''
+        add random noise to box,
+        normal random with standard_variance=0.8*box sidelength
+        '''
+        bs,seq_len = boxes.shape[0],boxes.shape[1]
+        boxes = boxes.reshape(-1,2,2)   # [bs,len,2,2] -> [bs*seq_len,2,2]
+        valid_mask = torch.unique(torch.where(torch.diff(boxes.reshape(-1,4)))[0]) # 除 [0,0,0,0](pad)或[-1,-1,-1,-1](mask)之外的box
+        box_width,box_height = boxes[valid_mask,1,0]-boxes[valid_mask,0,0],boxes[valid_mask,1,1]-boxes[valid_mask,0,1]  # width:[bs*seq_len]; height:[bs*seq_len]
+        boxes[valid_mask,0,0] += torch.min(torch.normal(0.0,box_width*0.5),box_width*0.5)    # x1
+        boxes[valid_mask,0,1] += torch.min(torch.normal(0.0,box_height*0.5),box_height*0.5)   # y1
+        boxes[valid_mask,1,0] += torch.max(torch.normal(0.0,box_width*0.5),-box_width*0.5)    # x2
+        boxes[valid_mask,1,1] += torch.max(torch.normal(0.0,box_height*0.5),-box_height*0.5)   # y2
+        return boxes.reshape(bs,seq_len,2,2)
+        
+    
     # 这个 forward 方法的作用是对各种 prompt 进行 embedding, 并返回稀疏 embedding 和密集 embedding。它包含:
     # 1. 调用 _get_batch_siz e根据点 prompt、框 prompt和掩码 prompt计算输出的 batch size bs。
     # 2. 初始化稀疏 embedding为形状为 (bs, 0, self.embed_dim) 的空张量, 设备为 _get_device() 的返回设备。
@@ -190,6 +208,8 @@ class PromptEncoder(nn.Module):
         self,
         points: Optional[torch.Tensor],
         boxes: Optional[torch.Tensor],
+        add_noise: bool = False,
+        omit_ratio = 0,
     ) -> torch.Tensor:
         """
         Embeds different types of prompts, returning both sparse and dense
@@ -216,7 +236,9 @@ class PromptEncoder(nn.Module):
             sparse_embeddings = torch.cat([sparse_embeddings, point_embeddings], dim=-2)  #[bs,len,n+1,d]
         if boxes is not None:
             boxes = boxes.to(self._get_device())
-            box_embeddings = self._embed_boxes(boxes)   # [bs,len,2,2]->[bs,len,2,d]
+            if add_noise:
+                boxes = self.add_random_noise(boxes)    #  [bs,len,2,2]
+            box_embeddings = self._embed_boxes(boxes,omit_ratio=omit_ratio)   # [bs,len,2,2]->[bs,len,2,d]；coords<0(==-1)的emb为0
             sparse_embeddings = torch.cat([sparse_embeddings, box_embeddings], dim=-2)
 
         
@@ -255,14 +277,21 @@ class PositionEmbeddingRandom(nn.Module):
     # 3. 将 coords 与 positional_encoding_gaussian_matrix 相乘。
     # 4. 将结果乘以 2*π。
     # 5. 拼接 sin 和 cos 作为位置编码,返回形状为 (d_1, ..., d_n, C) 的张量。
-    def _pe_encoding(self, coords: torch.Tensor) -> torch.Tensor:
+    def _pe_encoding(self, coords: torch.Tensor, omit_ratio=0) -> torch.Tensor:
         """Positionally encode points that are normalized to [0,1]."""
         # assuming coords are in [0, 1]^2 square and have d_1 x ... x d_n x 2 shape
-        coords = 2 * coords - 1 # coords:[bs,n+1,2]
-        coords = coords @ self.positional_encoding_gaussian_matrix  # positional_encoding_gaussian_matrix:[2,d/2]
-        coords = 2 * np.pi * coords #[bs,n+1,d/2]
-        # outputs d_1 x ... x d_n x C shape
-        return torch.cat([torch.sin(coords), torch.cos(coords)], dim=-1)    # [bs,n+1,d]
+        coords_emb = 2 * coords - 1 # coords: [bs*seq_len,2,2]
+        coords_emb = coords_emb @ self.positional_encoding_gaussian_matrix  # positional_encoding_gaussian_matrix:[2,d/2]
+        coords_emb = 2 * np.pi * coords_emb #[bs,n+1,d/2]
+        coords_emb = torch.cat([torch.sin(coords_emb), torch.cos(coords_emb)], dim=-1)
+        # coords<0 => mask_prompt=-1 => position_emb=0
+        mask = (coords.reshape(-1,4)[:,:] < 0).all(dim=1)      # mask : [bs*len],coord < 0(==-1)的emb为0
+        coords_emb[mask, :, :] = 0      
+        # 随机选取一部分有prompt输入的数据，隐藏其prompt输入，但保留prompt_true计算loss
+        random_numbers = torch.rand(coords.shape[0])
+        omit_mask = random_numbers < omit_ratio
+        coords_emb[omit_mask,:,:] = 0
+        return coords_emb    # [bs*len,n+1,d]
 
     # forward 方法:
     # 1. 输入参数 size 为 (H, W) 的网格大小。
@@ -289,10 +318,12 @@ class PositionEmbeddingRandom(nn.Module):
     # 3. 调用 _pe_encoding 对 coords 进行位置编码。
     # 4. 返回位置编码,形状为 (B, N, C)。
     def forward_with_coords(
-        self, coords_input: torch.Tensor, image_size: Tuple[int, int]
+        self, coords_input: torch.Tensor, image_size: Tuple[int, int] = None, omit_ratio = 0
     ) -> torch.Tensor:
         """Positionally encode points that are not normalized to [0,1]."""
-        coords = coords_input.clone()           # [bs,2,2]
-        coords[:, :, 0] = coords[:, :, 0] / image_size[1]
-        coords[:, :, 1] = coords[:, :, 1] / image_size[0]
-        return self._pe_encoding(coords)  # B x N x C
+        coords = coords_input.clone()           # [bs*seq_len,2,2]
+        # image_size is None: 传入坐标已归一化
+        if image_size is not None:
+            coords[:, :, 0] = coords[:, :, 0] / image_size[1]
+            coords[:, :, 1] = coords[:, :, 1] / image_size[0]
+        return self._pe_encoding(coords,omit_ratio=omit_ratio)  # coords < 0(==-1)的emb为0

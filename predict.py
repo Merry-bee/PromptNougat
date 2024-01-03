@@ -125,6 +125,8 @@ def predict_files(datasets,args,model,pdf=None):
         # there may be multiple pdf files in one batch: is_last_page:('','','aaa.pdf','','','bbb.pdf','')
         # one pdf file may also be divided into multiple batches: is_last_page:('','','ccc.pdf','','','','')
         # sample: [bs,3,896,672]
+        if i in [0,1]:
+            continue
         model_output = model.inference(
             args,
             image_tensors=sample,

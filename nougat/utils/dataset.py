@@ -274,8 +274,11 @@ class NougatDataset(Dataset):
             pre_ids.append(self.global_start_id)    # <work>
             pre_ids.append(pre_id_lst[0][0])   # <s>
             prompts.append([[0,0],[0,0]])   # p_<s>
-            for i,pre_id in enumerate(pre_id_lst):
-                pre_id = pre_id[1:-1]   # 去掉<s>和</s>
+            for i,pre_id in enumerate(pre_id_lst):  
+                if pre_id[1] == 243:    # 单独一个空格，制造数据时多加的，去掉
+                    pre_id = pre_id[2:-1]
+                else:
+                    pre_id = pre_id[1:-1]   # 去掉<s>和</s>
                 pre_ids.extend(pre_id)
                 prompt = [sample['prompt'][i]]*len(pre_id)     # 一个word可能被拆分成多个token
                 prompts.extend(prompt)
@@ -283,7 +286,7 @@ class NougatDataset(Dataset):
             pre_ids = pre_ids[:self.max_length-1]
             pre_ids.append(pre_id_lst[-1][-1])  #</s>
             prompts = prompts[:self.max_length-2]
-            prompts.extend([[[input_tensor.shape[2],input_tensor.shape[1]],[input_tensor.shape[2],input_tensor.shape[1]]]]*2)    # p_</s> and p_</work>:[[672,896],[672,896]]
+            prompts.extend([[[0.99,0.99],[1,1]]]*2)    # p_</s> and p_</work>:[[672,896],[672,896]]
             attention_mask = [1]*len(pre_ids)
             # padding
             prompts = prompts + [[[0,0],[0,0]]]*max(0,self.max_length-len(pre_ids))

@@ -50,8 +50,8 @@ class PromptModelPLModule(pl.LightningModule):
             #         p.requires_grad = True # 训练新加入参数; decoder.cross_attn加入训练
             #     else:
             #         p.requires_grad = False  # 冻结已有参数
-            # if self.config.ckpt_path is not None:
-            #     self.model.load_state_dict({re.sub(r'^model.decoder','decoder',re.sub(r'^model.encoder','encoder',k)):v for k,v in torch.load(self.config.ckpt_path)['state_dict'].items()})
+            if self.config.ckpt_path is not None:
+                self.model.load_state_dict({re.sub(r'^model.decoder','decoder',re.sub(r'^model.encoder','encoder',k)):v for k,v in torch.load(self.config.ckpt_path)['state_dict'].items()})
     
         else:
             self.model = PromptNougatModel(
@@ -89,11 +89,14 @@ class PromptModelPLModule(pl.LightningModule):
         prompts = torch.cat(prompts)
         loss,loss_token,loss_position,iou = self.model(image_tensors, pre_input_ids, attention_masks, label_ids, prompt_in=prompts[:,:-1,:,:],prompt_true=prompts[:,1:,:,:])[0] #CrossEntropyLoss()+IoU_loss()
         if loss is not None:
-            self.log_dict({"train/loss": loss}, sync_dist=True)
-            self.log_dict({"train/loss_token": loss_token}, sync_dist=True)
-            self.log_dict({"train/loss_position": loss_position}, sync_dist=True)
-            self.log_dict({"train/iou": iou}, sync_dist=True)
-        return loss
+            self.log_dict({"train/loss": loss}, sync_dist=False)
+            self.log_dict({"train/loss_token": loss_token}, sync_dist=False)
+            self.log_dict({"train/loss_position": loss_position}, sync_dist=False)
+            self.log_dict({"train/iou": iou}, sync_dist=False)
+            return loss
+        else:
+            self.log_dict({"train/loss_token": loss_token}, sync_dist=False)
+            return loss_token
 
     def validation_step(self, batch, batch_idx, dataset_idx=0):
         if batch is None:
@@ -143,8 +146,7 @@ class PromptModelPLModule(pl.LightningModule):
         scores = {
             "val/" + key: sum(values) / len(values) for key, values in metrics.items()
         }
-        loss_token,loss_position,iou = cal_loss(logits=logits.view(-1,self.model.decoder.tokenizer.vocab_size),labels=labels.view(-1),prompt_pred=output['prompt_pred'],prompt_true=prompt_true)
-        loss = loss_token+loss_position
+        loss, loss_token,loss_position,iou = cal_loss(logits=logits.view(-1,self.model.decoder.tokenizer.vocab_size),labels=labels.view(-1),prompt_pred=output['prompt_pred'],prompt_true=prompt_true)
         scores["val/loss_token"] = loss_token
         scores["val/loss_position"] = loss_position
         scores["val/iou"] = iou
@@ -159,7 +161,7 @@ class PromptModelPLModule(pl.LightningModule):
             self.validation_step_outputs is not None
             and len(self.validation_step_outputs) >= 1
         ):
-            self.log_dict(self.validation_step_outputs[0], sync_dist=True)
+            self.log_dict(self.validation_step_outputs[0], sync_dist=False)
             self.validation_step_outputs.clear()
 
     def configure_optimizers(self):

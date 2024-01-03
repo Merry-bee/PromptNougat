@@ -14,10 +14,13 @@ from collections import defaultdict
 from pathlib import Path
 import copy
 import json
+import fitz
+import subprocess
+import pandas as pd
 import re
 import matplotlib.pyplot as plt
 import numpy as np
-from PIL import Image
+from PIL import Image,ImageOps,ImageDraw
 import cv2
 import timm
 import torch
@@ -25,7 +28,7 @@ import torch.nn as nn
 from torch.nn import CrossEntropyLoss
 import torch.nn.functional as F
 import torch.distributed as dist
-from PIL import ImageOps
+
 
 from timm.models.swin_transformer import SwinTransformer
 from torchvision.transforms.functional import resize, rotate
@@ -271,10 +274,10 @@ class SwinEncoder(nn.Module):
         self.embed_dim = embed_dim
         self.num_heads = num_heads
 
-        self.model = SwinTransformer(
+        self.model = SwinTransformer(   
             img_size=self.input_size,
             depths=self.encoder_layer,
-            window_size=self.window_size,
+            window_size=self.window_size,   # input_size是window_size、patch_size和8(2**num_layer)的公倍数
             patch_size=self.patch_size,
             embed_dim=self.embed_dim,
             num_heads=self.num_heads,
@@ -347,7 +350,7 @@ class SwinEncoder(nn.Module):
         else:
             return test_transform
 
-    def prepare_input(
+    def prepare_input_padding(
         self, img: Image.Image, random_padding: bool = False
     ) -> torch.Tensor:
         """
@@ -360,7 +363,7 @@ class SwinEncoder(nn.Module):
             return
         # crop margins
         try:
-            img = self.crop_margin(img.convert("RGB"))
+            img = self.crop_margin(img.convert("RGB"))  # 去除白边；TODO：这一步要不要
         except OSError:
             # might throw an error for broken files
             return
@@ -387,7 +390,22 @@ class SwinEncoder(nn.Module):
             delta_width - pad_width,
             delta_height - pad_height,
         )
-        return self.to_tensor(ImageOps.expand(img, padding))
+        return self.to_tensor(ImageOps.expand(img, padding))    # ImageOps.expand(img, padding):(672,896), to_tensor():[3,896,672]
+        
+    def prepare_input(
+        self, img: Image.Image, random_padding: bool = False
+    ) -> torch.Tensor:
+        """
+        Convert PIL Image to tensor by forcing resize, image scale may be changed
+        """
+        if img is None:
+            return
+        # if img.size[0] > img.size[1]:
+        #     img = img.resize(self.input_size)
+        # else:
+        img = img.resize([self.input_size[1],self.input_size[0]])
+       
+        return self.to_tensor(img)
 
 class PromptBartConfig(PretrainedConfig):
     model_type = "promptbart"
@@ -913,7 +931,7 @@ class PromptBartForCausalLM(PromptBartPreTrainedModel):
             mask_in_chans=16,
         )
         self.position_decoder = PositionDecoder(
-            decoder_attention_heads=config.decoder_attention_heads,decoder_layers=config.decoder_layers,input_dim=588, hidden_dim=256, output_dim=4, num_layers=3,image_size=[896,672]
+            decoder_attention_heads=config.decoder_attention_heads,decoder_layers=config.decoder_layers,input_dim=config.image_embedding_size[0]*config.image_embedding_size[1], hidden_dim=256, output_dim=4, num_layers=3,image_size=config.input_size
         )
         
         self.tokenizer = PreTrainedTokenizerFast(tokenizer_file=str(tokenizer_file))
@@ -978,7 +996,7 @@ class PromptBartForCausalLM(PromptBartPreTrainedModel):
         )
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
 
-        prompt_hidden_states = self.prompt_encoder(points=None,boxes=prompt_in) if prompt_in is not None else None    # [bs,len,2,2]->[bs,len,2,d]
+        prompt_hidden_states = self.prompt_encoder(points=None,boxes=prompt_in,add_noise=True,omit_ratio=0.3) if prompt_in is not None else None    # [bs,len,2,2]->[bs,len,2,d]
 
         bs = encoder_hidden_states.shape[0]
         img_coord = torch.empty((bs,self.image_embedding_size[0],self.image_embedding_size[1],2,2),dtype=torch.bfloat16)    # [bs,28,21,2,2]
@@ -1071,9 +1089,8 @@ class PromptBartForCausalLM(PromptBartPreTrainedModel):
         loss,loss_token,loss_position,iou = None,None,None,None
         if labels is not None:      # train/validation
             labels = labels.to(logits.device)   # [bs,length], 用padding补齐
-            loss_token,loss_position,iou = cal_loss(logits=logits.view(-1, self.config.vocab_size), labels=labels.view(-1),prompt_pred=prompt_pred,prompt_true=prompt_true)  # logits[bs*label_len,50000],labels[bs*label_len]
-            # loss = self.alpha*loss_token+(1-self.alpha)*loss_position
-            loss=loss_token+loss_position
+            loss, loss_token,loss_position,iou = cal_loss(logits=logits.view(-1, self.config.vocab_size), labels=labels.view(-1),prompt_pred=prompt_pred,prompt_true=prompt_true)  # logits[bs*label_len,50000],labels[bs*label_len]
+           
         if not return_dict:
             output = (logits,) + outputs[1:]
             return (loss,) + output if loss is not None else output
@@ -1155,8 +1172,8 @@ class PromptBartForCausalLM(PromptBartPreTrainedModel):
         this_peer_finished = False  # used by synced_gpus only
 
         batch_size = input_ids.shape[0]
-        encoder_attention_mask = torch.ones([batch_size,28,21]).to(input_ids.device)    # 0: mask; 1: not
-        glob_cross_attn = torch.zeros([batch_size,28,21]).to(input_ids.device)           # 每个位置被注意到过的attn总和
+        # encoder_attention_mask = torch.ones([batch_size,28,21]).to(input_ids.device)    # 0: mask; 1: not
+        # glob_cross_attn = torch.zeros([batch_size,28,21]).to(input_ids.device)           # 每个位置被注意到过的attn总和
         cur_line = 0
         if validation:
             outputs = self.forward(     # self: PromptBartForCausalLM
@@ -1242,40 +1259,48 @@ class PromptBartForCausalLM(PromptBartPreTrainedModel):
             
                 soft_logits = torch.softmax(outputs.logits,dim=2)
                 p_max = soft_logits.max(dim=-1).values   # [bs,input_ids.shape[1]]
-                p_thres = 0.99
-                with open('output/tmp/000_0.txt','a') as fo:
-                    fo.write(f'text:{self.tokenizer.decode(torch.argmax(soft_logits[0,-1]))},position:{outputs.prompt_pred.squeeze(0)[-1]}')
-                    fo.write('\n')
+                p_thres = 0.9
+
                 for b in range(p_max.shape[0]):
                     p = p_max[b][-1].item()
                     if p < p_thres and p_max.shape[0]==1: 
                         # batch_size=1,inference with human
                         cross_attn_weights = torch.stack(outputs.cross_attentions)[:,:,:,-1:,:] # [4, bs,16,1,588]
                         prompt_pred = outputs.prompt_pred.squeeze(0)[-1] # [1,1,2,2]->[2,2]
-                        print(f'''pdf:{pdf[0]}\npretexts:{repr(self.tokenizer.decode(input_ids[b]))}\nThis num_th:{input_ids.shape[1]}
-                            predicted_token:{self.tokenizer.decode(torch.argmax(soft_logits[b,-1]))}\np:{p}\npredicted_position:{prompt_pred}''')
-                    
-                        while True:
-                            try:
-                                # 改token
-                                token_user = input('This token:')
-                                if token_user == 'y' :
-                                    pass
-                                else:
-                                    outputs.logits[b,-1,self.tokenizer(token_user)['input_ids'][1]]=outputs.logits[b,-1,:].max()+1
-                                # 改position
-                                prompt_user = input('Next box:')  # [[x,y],[x,y]]
-                                if prompt_user =='y':
-                                    pass
-                                else:
-                                    outputs.prompt_pred[:,-1:,:,:] = torch.tensor(eval(prompt_user),dtype=torch.bfloat16).unsqueeze(0).unsqueeze(0)   # [2,2]->[1,1,2,2]
-                                if token_user!='y' or prompt_user != 'y':
-                                    with open('output/tmp/000_0.txt','a') as fo:
-                                        fo.write(f'text:{self.tokenizer.decode(torch.argmax(soft_logits[b,-1]))},position_user:{outputs.prompt_pred.squeeze(0)[-1]}')  
-                                        fo.write('\n')
-                                break   # 输入格式正确，跳出循环
-                            except:
-                                continue    # 输入格式错误，重新输入
+                        # 保存预测结果
+                        visual_box(png_path,boxes,save_path,color='red',image_size = [672,896])
+                        # 读取用户输入
+                        os.system('rm flask-image-annotator/images/*')
+                        png_path = f'flask-image-annotator/images/{Path(pdf[0]).stem}_{pdf[1]}.png'
+                        pd = fitz.open(pdf[0])
+                        page = pd[pdf[1]]
+                        with open(png_path, "wb") as f:
+                            f.write(page.get_pixmap(dpi=300).pil_tobytes(format="PNG")) 
+                        image_size = [672,896]
+                        img = Image.open(png_path).resize(image_size)
+                        draw = ImageDraw.Draw(img)
+                        prompt_pred[:,0] *= image_size[0]
+                        prompt_pred[:,1] *= image_size[1]
+                        draw.rectangle([tuple(prompt_pred[0]),tuple(prompt_pred[1])],outline='red')
+                        # draw.text((prompt_pred[0][0]-10,prompt_pred[0][1]-20),f'{prompt_pred.tolist()}',fill='black')
+                        img.save(png_path)     
+                        print(f'''pdf:{pdf[0]}\npretexts:{repr(self.tokenizer.decode(input_ids[b]))}\n
+                              this_token:{self.tokenizer.decode(torch.argmax(soft_logits[b,-1]))}\np={p}''')
+                        os.chdir('flask-image-annotator')
+                        process = subprocess.Popen(['python','app.py'])
+                        os.chdir('../')
+                        
+                        with open('flask-image-annotator/out.json','r') as fi:
+                            user_input = fi.readline()
+                        if user_input:  # 不画框：直接默认不变
+                            dct = json.loads(user_input)
+                            token_user = dct['name'].replace('\\n','\n')  # 将\\n恢复为\n，但保留Unicode字符串
+                            if token_user:  # 画了框但没有输入text：token不变
+                                outputs.logits[b,-1,self.tokenizer(token_user)['input_ids'][1]]=outputs.logits[b,-1,:].max()+1
+                            prompt_user = [[dct['x1']/image_size[0],dct['y1']/image_size[1]],[dct['x2']/image_size[0],dct['y2']/image_size[1]]]
+                            outputs.prompt_pred[:,-1:,:,:] = torch.tensor(prompt_user,dtype=torch.bfloat16).unsqueeze(0).unsqueeze(0)   # [2,2]->[1,1,2,2]
+                        process.terminate()
+                            
                             
 
                 if synced_gpus and this_peer_finished:
@@ -1596,8 +1621,11 @@ class PromptDecoder(nn.Module):
         self,
         decoder_layer: int,
         max_position_embeddings: int,
+        input_size:List[int],
+        image_embedding_size:List[int],
         hidden_dimension: int = 1024,
         name_or_path: Union[str, bytes, os.PathLike] = None,
+        
     ):
         super().__init__()
         self.decoder_layer = decoder_layer
@@ -1627,6 +1655,8 @@ class PromptDecoder(nn.Module):
                 d_model=hidden_dimension,
                 prompt_embed_dim=1024,#256,
                 decoder_start_token_id=9,
+                input_size = input_size,
+                image_embedding_size = image_embedding_size,
             ),
             tokenizer_file='checkpoints/0.1.0-small/tokenizer.json'
         )
@@ -1945,8 +1975,8 @@ class PromptNougatConfig(PretrainedConfig):
         embed_dim: int = 128,
         num_heads: List[int] = [4, 8, 16, 32],
         hidden_dimension: int = 1024,
-        
-        
+        image_embedding_size: List[int] = [28,21],
+        omit_ratio: float = 0,
         **kwargs,
     ):
         super().__init__()
@@ -2128,6 +2158,8 @@ class PromptNougatModel(PreTrainedModel):
             decoder_layer=self.config.decoder_layer,
             name_or_path=self.config.name_or_path,
             hidden_dimension=self.config.hidden_dimension,
+            input_size = self.config.input_size,
+            image_embedding_size = [self.config.input_size[0]//32,self.config.input_size[1]//32]
         )
         self.pad_id = self.decoder.tokenizer.pad_token_id
 
@@ -2316,6 +2348,7 @@ class PromptNougatModel(PreTrainedModel):
         output["repetitions"] = self.decoder.tokenizer.batch_decode(
             output["repetitions"], skip_special_tokens=True
         )
+        # validation=True时，output['sequence']==output['predictions']==gt不能作为评价指标，必须decode(logits)
         output["predictions"] = postprocess(                    # output['predictions']:(batch_size,?): english chars
             self.decoder.tokenizer.batch_decode(
                 output["sequences"], skip_special_tokens=True

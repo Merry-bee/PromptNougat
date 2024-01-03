@@ -1,9 +1,9 @@
-python -m pdb predict.py data/lorempdf/000/latex.pdf \
+python -m pdb predict.py data/tmp/trainset/1010.1542.pdf \
 --out output/greedy_search \
---checkpoint result/nougat/20231207_183828 \
+--checkpoint result/nougat/20231227_195400 \
 --batchnum 8 \
 --batchsize 1 \
 --cuda "cuda:0" \
 --recompute \
 --return_attention True \
---ckpt_path result/nougat/20231207_183828/epoch=201-step=56358.ckpt \
+--ckpt_path result/nougat/20231227_195400/epoch=5-step=129072.ckpt \

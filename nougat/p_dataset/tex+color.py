@@ -8,9 +8,12 @@ import fitz
 from PIL import Image
 import math
 from collections import OrderedDict
+import subprocess
+import time
 import sys
 sys.path.append('/mnt/workspace/sunyu/nougat')
 from nougat.dataset.split_md_to_pages import split_markdown
+from nougat.dataset.parser.html2md import html2md
 
 with open('nougat/p_dataset/Greek.json','r') as fi:
     GREEK = json.loads(fi.read())
@@ -199,9 +202,11 @@ def colored_file(tex_file):
             continue    # affiliation颜色不变
           
         if '\\author' in line:  #\author{C. Bal\'{a}zs$^{1}$} -> C. Bal\'azs$^{1}$
-            content = re.match(r'\\author(?:\[.*?\])*\{(.*)\}',line[line.index('\\author'):]).group(1)
-            new_content = re.sub(r'(?=[^\^])\{([a-z])\}(?=[^\$])',r'\1',content)
-            line = line.replace(content,new_content)
+            res = re.match(r'\\author(?:\[.*?\])*\{(.*)\}',line[line.index('\\author'):])
+            if res:
+                content = res.group(1)
+                new_content = re.sub(r'(?=[^\^])\{([a-z])\}(?=[^\$])',r'\1',content)
+                line = line.replace(content,new_content)
         
         # 将'\\date{\\today}'函数换为固定日期，防止mmd和PDF生成的日期不同
         if re.search(r'\\date\{.*?\}',line):
@@ -265,60 +270,12 @@ def colored_dct(mmd_file):
         fo.write(gt)
     return dct_color
 
-def repair_ref(origin_pdf_file,color_pdf_file):
-    
-                
-    pdf_o = fitz.open(origin_pdf_file)
-    pdf_c = fitz.open(color_pdf_file)
-    for page_idx in range(len(pdf_c)):
-        page_o = pdf_o[page_idx]
-        page_c = pdf_c[page_idx]
-        origin_text = page_o.get_text()
-        color_text = page_c.get_text()
-        mis_lst=[]
-
-        spans = [] # flatten to match more
-        for b in page_c.get_textpage().extractDICT()['blocks']:
-            for l in b['lines']:
-                for s in l['spans']:
-                    spans.append(s)
-        for span_idx,s in enumerate(spans):
-            if '?' in s['text']:
-                content = s['text']
-                pre_content = ''.join([spans[idx]['text'] for idx in range(span_idx-3,span_idx) if idx>=0])
-                post_content = ''.join([spans[idx]['text'] for idx in range(span_idx+1,span_idx+3) if idx<len(spans)])
-                mis_lst.append((tuple(s['bbox']),s['size'],pre_content,content,post_content))
-         
-        
-        for bbox,size,pre_content,content,post_content in mis_lst:
-            # 覆盖问号
-            page_c.add_redact_annot(bbox)
-            # 找到正确文本
-            if (not pre_content or len(pre_content.strip())<2 or pre_content not in origin_text) and (not post_content or len(pre_content.strip())<2 or post_content not in origin_text):
-                continue
-            start_idx = origin_text.index(pre_content)+len(pre_content) if pre_content and len(pre_content.strip())>=2 and pre_content in origin_text else origin_text.index(post_content)-len(content)
-            end_idx = origin_text.index(post_content) if post_content and len(pre_content.strip())>=2 and post_content in origin_text else origin_text.index(pre_content)+len(pre_content)+len(content)
-            correct_text = re.sub(r'\[|\]','',origin_text[start_idx:end_idx+1]).strip()
-            if not re.search(r'\d',correct_text):
-                continue
-            # 添加正确标号
-            new_bbox = (bbox[0],bbox[1]-2,bbox[2]+5 if bbox[2]-bbox[0]<10 else bbox[2],bbox[3]+2)
-            page_c.add_redact_annot(new_bbox,correct_text,fontsize=size)
-        page_c.apply_redactions()
-
-    pdf_c.save('data/arxiv_all_files/0704.0001/diphoton1.pdf')
     
 def norm_box(box,page_h,page_w):
     x1,y1,x2,y2 = box[0]/page_w,box[1]/page_h,box[2]/page_w,box[3]/page_h
     return [[x1,y1],[x2,y2]]
 
-def match_datapair(mmd_color_dct,pdf_file,page_rect=(0,0,672,896),dis_thres=80):
-    '''
-    TODO:
-    
-    训练：png_path在构造训练数据时需改为相对train_data文件夹的相对路径
-    训练：mmd_text加空格:暂时都加，tokenize的时候，如果空格+单词是一个token则保留，如果不是一个token则去掉空格（此时大概率是符号）
-    '''
+def match_datapair(mmd_color_dct,pdf_file,dis_thres=80):
         
     pdf = fitz.open(pdf_file)
     os.makedirs(Path(pdf_file).parent/'png',exist_ok=True) 
@@ -328,7 +285,7 @@ def match_datapair(mmd_color_dct,pdf_file,page_rect=(0,0,672,896),dis_thres=80):
         # start a page
         page = pdf[page_idx]
         _,_,page_w,page_h = page.rect
-        # page.set_mediabox(fitz.Rect(page_rect))
+       
         dct = {}
         png_path = Path(pdf_file).parent/f'png/{page_idx}.png'  # data/arxiv_all_files/0710.2897/0.png
         
@@ -475,8 +432,21 @@ def match_datapair(mmd_color_dct,pdf_file,page_rect=(0,0,672,896),dis_thres=80):
             pretext.append(text)
             prompt.append(position)
                     
-        if len(prompt) > 0 and len(prompt)==len(pretext):
-            
+        if len(prompt) > 0 and len(prompt)==len(pretext) and len(pretext)>250:  # 去除过短数据
+            for idx in range(len(prompt)):
+                if len(prompt[idx]) == 2:   # 找到第一个非'mask'位置
+                    break
+            # 去掉开头多余符号
+            if idx>0 and idx<len(prompt)-1:
+                if '#' in pretext[idx-1]:   # 保留标题
+                    prompt = prompt[idx-1:]
+                    pretext = pretext[idx-1:]
+                elif idx>=2 and ('#' in pretext[idx-2] or re.search(r'figure|table',pretext[idx-2],re.I)):   # 保留图表头
+                    prompt = prompt[idx-2:]
+                    pretext = pretext[idx-2:]
+                else:
+                    prompt = prompt[idx:]
+                    pretext = pretext[idx:]
                      
             dct['image'] = str(png_path)
             with open(png_path, "wb") as f:
@@ -488,11 +458,7 @@ def match_datapair(mmd_color_dct,pdf_file,page_rect=(0,0,672,896),dis_thres=80):
             dct["label"] = []
             dct["pretext"] = pretext
             dct["prompt"] = prompt
-            
-            
-            
-  
-            
+              
             with open(save_data_path,'a') as fo:
                 json.dump(dct,fo)
                 fo.write('\n')
@@ -500,8 +466,10 @@ def match_datapair(mmd_color_dct,pdf_file,page_rect=(0,0,672,896),dis_thres=80):
            
     if os.path.exists(png_path.parent) and os.path.exists(save_data_path):
         tex_fold = Path(pdf_file).parent.name
-        os.system(f'cp -r {png_path.parent} data/arxiv_all_files/{tex_fold}/')
-        os.system(f'cp {save_data_path} data/arxiv_all_files/{tex_fold}/')
+        subprocess.run(['cp','-r',png_path.parent,f'data/{save_fold}/{tex_fold}'],capture_output=True,text=True)
+        # os.system(f'cp -r {png_path.parent} data/arxiv_all_files/{tex_fold}/')
+        subprocess.run(['cp',save_data_path,f'data/{save_fold}/{tex_fold}/'],capture_output=True,text=True)
+        # os.system(f'cp {save_data_path} data/arxiv_all_files/{tex_fold}/')
             
             
 def black_datapair(pdf_file,mmd_file):
@@ -535,138 +503,185 @@ def black_datapair(pdf_file,mmd_file):
            
     if os.path.exists(png_path.parent) and os.path.exists(save_data_path):
         tex_fold = Path(pdf_file).parent.name
-        os.system(f'cp -r {png_path.parent} data/arxiv_all_files/{tex_fold}/')
-        os.system(f'cp {save_data_path} data/arxiv_all_files/{tex_fold}/')
+        subprocess.run(['cp','-r',png_path.parent,f'data/{save_fold}/{tex_fold}'],capture_output=True,text=True)
+        # os.system(f'cp -r {png_path.parent} data/arxiv_all_files/{tex_fold}/')
+        subprocess.run(['cp',save_data_path,f'data/{save_fold}/{tex_fold}'],capture_output=True,text=True)
+        # os.system(f'cp {save_data_path} data/arxiv_all_files/{tex_fold}/')
             
+def check_subprocess(process,max_try_times,time_step):
+    sleep_times = 0
+    while True:
+        time.sleep(time_step)
+        sleep_times += 1
+        # 检查子进程是否结束
+        return_code = process.poll()
+        if return_code is not None:
+            process.terminate()
+            break
+        elif sleep_times > max_try_times:
+            process.terminate()
+            break
+        # 子进程还在运行，向其输入回车
+        process.stdin.write('\n')
+        process.stdin.flush() 
+        
+def main(file_idx,tex_fold,save_fold):
 
-def main(fold_lst,start_idx):
-  
+    break_flag=False
+    try:
+        os.makedirs(f'data/{save_fold}/{tex_fold}', exist_ok=True)
+        # 复制tex文件夹: 保留两份
+        if subprocess.run(['cp', '-r', f'/../mnt/data/oss_beijing/zhonghansen/arxiv/latex/{tex_fold}','/root/data/arxiv_origin/'], capture_output=True, text=True).returncode \
+            or subprocess.run(['cp', '-r', f'/root/data/arxiv_origin/{tex_fold}','/root/data/arxiv_color/'], capture_output=True, text=True).returncode:
+        # if os.system(f'cp -r ~/../mnt/data/oss_beijing/zhonghansen/arxiv/latex/{tex_fold} data/arxiv_origin/') \
+            # or os.system(f'cp -r data/arxiv_origin/{tex_fold} data/arxiv_color/'):
+            print(f'{file_idx}. Copy error:{tex_fold}')
     
-    for i,tex_fold in enumerate(fold_lst[start_idx:]):
-        break_flag=False
-        try:
-            os.makedirs(f'data/arxiv_all_files/{tex_fold}', exist_ok=True)
-            file_idx = i+start_idx
-            # 复制tex文件夹: 保留两份
-            if os.system(f'cp -r ~/../mnt/data/oss_beijing/zhonghansen/arxiv/latex/{tex_fold} data/arxiv_origin/') \
-                or os.system(f'cp -r data/arxiv_origin/{tex_fold} data/arxiv_color/'):
-                print(f'{file_idx}. Copy error:{tex_fold}')
-                continue
-            # os.system(f'mv  data/arxiv_origin/{tex_fold} data/arxiv_origin/{tex_fold.replace(".",'')}')
-            # 找到所有.tex文件
-            tex_files = os.popen(f'find data/arxiv_origin/{tex_fold} -type f -name "*.tex"').read().split('\n')[:-1]
+        # 找到所有.tex文件
+        tex_files = subprocess.run(['find', f'/root/data/arxiv_origin/{tex_fold}', '-type', 'f', '-name', '*.tex'], stdout=subprocess.PIPE, text=True).stdout.split('\n')[:-1]
+        # tex_files = os.popen(f'find data/arxiv_origin/{tex_fold} -type f -name "*.tex"').read().split('\n')[:-1]
+        if not tex_files:
+            tex_files = subprocess.run(['find', f'/root/data/arxiv_origin/{tex_fold}/{tex_fold}', '-maxdepth', '1', '-type', 'f'], stdout=subprocess.PIPE, text=True).stdout.split('\n')[:-1]
+            # tex_files = os.popen(f'find data/arxiv_origin/{tex_fold}/{tex_fold} -maxdepth 1 -type f').read().split('\n')[:-1]
+            tex_files = [str(Path(tex_file).rename(tex_file+'.tex')) for tex_file in tex_files]
             if not tex_files:
-                tex_files = os.popen(f'find data/arxiv_origin/{tex_fold}/{tex_fold} -maxdepth 1 -type f').read().split('\n')[:-1]
-                tex_files = [str(Path(tex_file).rename(tex_file+'.tex')) for tex_file in tex_files]
-                if not tex_files:
-                    print(f'{file_idx}. tex not exist: {tex_fold}')
-                    break_flag = True
-                    continue 
-            # \textcolor
-            for tex_file in tex_files:
-                try:
-                    os.system(f'cp {tex_file} data/arxiv_all_files/{tex_fold}/origin.tex')
-                    colored_file(tex_file)
-                    os.system(f'cp {tex_file.replace("arxiv_origin","arxiv_color")} data/arxiv_all_files/{tex_fold}/{Path(tex_file).name}')
-                except ValueError as e:
-                    print(f'{file_idx}. colored_file error: {tex_fold} :{e}')
-                    break_flag = True
-                    break 
-            if not break_flag:
-                # 找到主文件
-                color_tex_file = os.popen(f'find data/arxiv_color/{tex_fold} -maxdepth 1 -type f -name "*.tex"').read().split('\n')[0]
-                origin_tex_file = os.popen(f'find data/arxiv_origin/{tex_fold} -maxdepth 1 -type f -name "*.tex"').read().split('\n')[0]
-                # latexmk: tex->pdf
-                # 生成原PDF,用.aux和.bib生成彩色pdf
-                os.system(f'latexmk -pdfps -f -g -interaction=nonstopmode -cd data/arxiv_origin/{tex_fold} {origin_tex_file} > log/construct_data.txt 2>&1') 
-                origin_pdf_file = f'{origin_tex_file.replace(".tex",".pdf")}'
-                if not os.path.exists(origin_pdf_file):
-                    print(f'{file_idx}. origin 2 pdf fail: {tex_fold}')
+                print(f'{file_idx}. tex not exist: {tex_fold}')
+                break_flag = True
+                
+        # \textcolor
+        for tex_file in tex_files:
+            try:
+                subprocess.run(['cp', tex_file, f'data/{save_fold}/{tex_fold}/origin.tex'],capture_output=True, text=True)
+                # os.system(f'cp {tex_file} data/arxiv_all_files/{tex_fold}/origin.tex')
+                colored_file(tex_file)
+                subprocess.run(['cp', tex_file.replace("arxiv_origin","arxiv_color"), f'data/{save_fold}/{tex_fold}/{Path(tex_file).name}'],capture_output=True, text=True)
+                # os.system(f'cp {tex_file.replace("arxiv_origin","arxiv_color")} data/arxiv_all_files/{tex_fold}/{Path(tex_file).name}')
+            except ValueError as e:
+                print(f'{file_idx}. colored_file error: {tex_fold} :{e}')
+                break_flag = True
+            
+        if not break_flag:
+            # 找到主文件
+            color_tex_file = subprocess.run(['find', f'/root/data/arxiv_color/{tex_fold}', '-maxdepth', '1', '-type', 'f', '-name', '*.tex'],stdout=subprocess.PIPE, text=True).stdout.split('\n')[0]
+            # color_tex_file = os.popen(f'find data/arxiv_color/{tex_fold} -maxdepth 1 -type f -name "*.tex"').read().split('\n')[0]
+            origin_tex_file = subprocess.run(['find', f'/root/data/arxiv_origin/{tex_fold}', '-maxdepth', '1', '-type', 'f', '-name', '*.tex'],stdout=subprocess.PIPE, text=True).stdout.split('\n')[0]
+            # origin_tex_file = os.popen(f'find data/arxiv_origin/{tex_fold} -maxdepth 1 -type f -name "*.tex"').read().split('\n')[0]
+            # latexmk: tex->pdf
+            # 生成原PDF,用.aux和.bib生成彩色pdf
+            process = subprocess.Popen(['latexmk', '-pdfps', '-f', '-g', '-interaction=nonstopmode', '-cd', f'/root/data/arxiv_origin/{tex_fold}', origin_tex_file], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+            check_subprocess(process,60,30)
+            # subprocess.run(['latexmk', '-pdfps', '-f', '-g', '-interaction=nonstopmode', '-cd', f'data/arxiv_origin/{tex_fold}', origin_tex_file],capture_output=True,text=True)
+            # os.system(f'latexmk -pdfps -f -g -interaction=nonstopmode -cd data/arxiv_origin/{tex_fold} {origin_tex_file} > log/construct_data.txt 2>&1') 
+            origin_pdf_file = f'{origin_tex_file.replace(".tex",".pdf")}'
+            if not os.path.exists(origin_pdf_file):
+                print(f'{file_idx}. origin 2 pdf fail: {tex_fold}')
+                break_flag = True
+            else:
+                subprocess.run(['cp', origin_pdf_file, f'data/{save_fold}/{tex_fold}/origin.pdf'],capture_output=True,text=True)
+                # os.system(f'cp {origin_pdf_file} data/arxiv_all_files/{tex_fold}/origin.pdf')
+                subprocess.run(['cp', Path(origin_tex_file).with_suffix('.aux'), f'/root/data/arxiv_color/{tex_fold}/'],capture_output=True,text=True)
+                # os.system(f'cp {Path(origin_tex_file).with_suffix(".aux")} data/arxiv_color/{tex_fold}/')
+                subprocess.run(['bibtex', Path(color_tex_file).with_suffix('.aux')], capture_output=True, text=True)
+                # os.system(f'cd data/arxiv_color/{tex_fold}/ && bibtex *.aux > ../../../log/construct_data.txt 2>&1')
+                os.chdir(f'/root/data/arxiv_color/{tex_fold}/')
+                process = subprocess.Popen(['pdflatex', '-f', '-interaction=nonstopmode', Path(color_tex_file).name], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+                check_subprocess(process,60,30)
+                # subprocess.run(['pdflatex', '-f', '-interaction=nonstopmode', Path(color_tex_file).name], capture_output=True, text=True)
+                os.chdir(f'../mnt/workspace/sunyu/nougat')
+                # os.chdir('../../../')
+                # os.system(f'cd data/arxiv_color/{tex_fold}/ && pdflatex -f -interaction=nonstopmode {Path(color_tex_file).name} > ../../../log/construct_data.txt 2>&1')
+                color_pdf_file = f'{color_tex_file.replace(".tex",".pdf")}'
+                if not os.path.exists(color_pdf_file):
+                    color_pdf_file = subprocess.run(['find', f'/root/data/arxiv_color/{tex_fold}', '-maxdepth', '1', '-type', 'f', '-name', '*.pdf'],stdout=subprocess.PIPE,text=True).stdout.split('\n')[0]
+                    # color_pdf_file = os.popen(f'find data/arxiv_color/{tex_fold}/ -maxdepth 1 -type f -name "*.pdf" ').read().split('\n')[0]
+                if not os.path.exists(color_pdf_file):
+                    print(f'{file_idx}. tex 2 pdf fail: {tex_fold}')
                     break_flag = True
                 else:
-                    os.system(f'cp {origin_pdf_file} data/arxiv_all_files/{tex_fold}/origin.pdf')
-                    os.system(f'cp {Path(origin_tex_file).with_suffix(".aux")} data/arxiv_color/{tex_fold}/')
-                    os.system(f'cd data/arxiv_color/{tex_fold}/ && bibtex *.aux > ../../../log/construct_data.txt 2>&1')
-                    os.system(f'cd data/arxiv_color/{tex_fold}/ && pdflatex -f -interaction=nonstopmode {Path(color_tex_file).name} > ../../../log/construct_data.txt 2>&1')    # > log/construct_data.txt 2>&1
-                    color_pdf_file = f'{color_tex_file.replace(".tex",".pdf")}'
-                    if not os.path.exists(color_pdf_file):
-                        color_pdf_file = os.popen(f'find data/arxiv_color/{tex_fold}/ -maxdepth 1 -type f -name "*.pdf" ').read().split('\n')[0]
-                    if not os.path.exists(color_pdf_file):
-                        print(f'{file_idx}. tex 2 pdf fail: {tex_fold}')
-                        break_flag = True
-                    else:
-                        os.system(f'cp {color_pdf_file} data/arxiv_all_files/{tex_fold}/{Path(color_pdf_file).name}')                    
-                    
-            if not break_flag:           
-                # 去掉/usepackage{xcolor}
-                remove_package(color_tex_file)
-                # tex->html
-                os.system(f'latexmlc --nocomments --includestyles --dest=data/arxiv_color/{tex_fold}/color.html --path=data/arxiv_color/{tex_fold} -log=data/arxiv_color/{tex_fold}/color.latexml.log {str(Path(color_tex_file).name)} > log/construct_data.txt 2>&1')
-                html_file = f'data/arxiv_color/{tex_fold}/color.html'
-                if not os.path.exists(html_file):
+                    subprocess.run(['cp', color_pdf_file, f'data/{save_fold}/{tex_fold}/{Path(color_pdf_file).name}'],capture_output=True,text=True)
+                    # os.system(f'cp {color_pdf_file} data/arxiv_all_files/{tex_fold}/{Path(color_pdf_file).name}')                    
+                
+        if not break_flag:           
+            # 去掉/usepackage{xcolor}
+            remove_package(color_tex_file)
+            # tex->html
+            subprocess.run(['latexmlc', '--nocomments', '--includestyles', f'--dest=/root/data/arxiv_color/{tex_fold}/color.html', f'--path=/root/data/arxiv_color/{tex_fold}', f'-log=/root/data/arxiv_color/{tex_fold}/color.latexml.log', str(Path(color_tex_file).name)],capture_output=True,text=True)
+            # subprocess.run(['latexmlc', '--nocomments', '--includestyles', f'--dest=data/arxiv_color/{tex_fold}/color.html', f'--path=data/arxiv_color/{tex_fold}', f'-log=data/arxiv_color/{tex_fold}/color.latexml.log', str(Path(color_tex_file).name)],capture_output=True,text=True)
+            # os.system(f'latexmlc --nocomments --includestyles --dest=data/arxiv_color/{tex_fold}/color.html --path=data/arxiv_color/{tex_fold} -log=data/arxiv_color/{tex_fold}/color.latexml.log {str(Path(color_tex_file).name)} > log/construct_data.txt 2>&1')
+            html_file = f'/root/data/arxiv_color/{tex_fold}/color.html'
+            if not os.path.exists(html_file):
+                print(f'{file_idx}. tex 2 html fail: {tex_fold}')
+                break_flag = True
+            else:
+                subprocess.run(['cp', html_file, f'data/{save_fold}/{tex_fold}/{Path(html_file).name}'],capture_output=True,text=True)
+                # os.system(f'cp {html_file} data/arxiv_all_files/{tex_fold}/{Path(html_file).name}')
+                with open(html_file,'r') as fi:
+                    lines = fi.readlines()
+                if len(lines)< 40:
                     print(f'{file_idx}. tex 2 html fail: {tex_fold}')
                     break_flag = True
-                else:
-                    os.system(f'cp {html_file} data/arxiv_all_files/{tex_fold}/{Path(html_file).name}')
-                    with open(html_file,'r') as fi:
-                        lines = fi.readlines()
-                    if len(lines)< 40:
-                        print(f'{file_idx}. tex 2 html fail: {tex_fold}')
-                        break_flag = True
-                    
-            if not break_flag:    
-                # html->mmd
-                os.system(f'python nougat/dataset/parser/html2md.py --html data/arxiv_color/{tex_fold}/color.html --out data/arxiv_color/{tex_fold}/color.mmd > log/construct_data.txt 2>&1')
-                mmd_file = f'data/arxiv_color/{tex_fold}/color.mmd'
-                if not os.path.exists(mmd_file):
-                    print(f'{file_idx}. html 2 mmd fail: {tex_fold}')
-                    break_flag = True
-                else:
-                    os.system(f'cp {mmd_file} data/arxiv_all_files/{tex_fold}/{Path(mmd_file).name}')
                 
-            if not break_flag:
-                # mmd->dct_color
-                dct_color = colored_dct(mmd_file)
-                os.system(f'cp {mmd_file.replace("color.mmd","clean.mmd")} data/arxiv_all_files/{tex_fold}/')
-                # construct datapair
-                match_datapair(dct_color,color_pdf_file)
-                print(f'{file_idx}. successful constructed: {tex_fold}')
-            # 失败了，生成黑白数据
-            elif os.path.exists(origin_pdf_file):
-                # origin.html
-                os.system(f'latexmlc --nocomments --includestyles --dest=data/arxiv_origin/{tex_fold}/origin.html --path=data/arxiv_origin/{tex_fold} -log=data/arxiv_origin/{tex_fold}/origin.latexml.log {str(Path(origin_tex_file).name)} > log/construct_data.txt 2>&1')
-                html_file = f'data/arxiv_origin/{tex_fold}/origin.html'
-                if os.path.exists(html_file):
-                    os.system(f'cp {html_file} data/arxiv_all_files/{tex_fold}/{Path(html_file).name}')
-                    # origin.mmd
-                    os.system(f'python nougat/dataset/parser/html2md.py --html data/arxiv_origin/{tex_fold}/origin.html --out data/arxiv_origin/{tex_fold}/origin.mmd > log/construct_data.txt 2>&1')
-                    mmd_file = f'data/arxiv_origin/{tex_fold}/origin.mmd'
-                    if os.path.exists(mmd_file):
-                        os.system(f'cp {mmd_file} data/arxiv_all_files/{tex_fold}/{Path(mmd_file).name}')                     
-                        # construct datapair
-                        black_datapair(origin_pdf_file,mmd_file)
-                        print(f'{file_idx}. black constructed: {tex_fold}')
-
-        except Exception as e:
-            print(f'{file_idx}. {tex_fold}:{e}')
+        if not break_flag:    
+            # html->mmd
+            html2md(html=f'/root/data/arxiv_color/{tex_fold}/color.html',outp=f'/root/data/arxiv_color/{tex_fold}/color.mmd')
+            # os.system(f'python nougat/dataset/parser/html2md.py --html data/arxiv_color/{tex_fold}/color.html --out data/arxiv_color/{tex_fold}/color.mmd > log/construct_data.txt 2>&1')
+            mmd_file = f'/root/data/arxiv_color/{tex_fold}/color.mmd'
+            if not os.path.exists(mmd_file):
+                print(f'{file_idx}. html 2 mmd fail: {tex_fold}')
+                break_flag = True
+            else:
+                subprocess.run(['cp',mmd_file, f'data/{save_fold}/{tex_fold}/{Path(mmd_file).name}'],capture_output=True,text=True)
+                # os.system(f'cp {mmd_file} data/arxiv_all_files/{tex_fold}/{Path(mmd_file).name}')
             
-        finally:
-            # 删除tex文件夹
-            os.system(f'rm -r data/arxiv_origin/{tex_fold}') 
-            os.system(f'rm -r data/arxiv_color/{tex_fold}')
+        if not break_flag:
+            # mmd->dct_color
+            dct_color = colored_dct(mmd_file)
+            subprocess.run(['cp', mmd_file.replace("color.mmd","clean.mmd"), f'data/{save_fold}/{tex_fold}'],capture_output=True,text=True)
+            # os.system(f'cp {mmd_file.replace("color.mmd","clean.mmd")} data/arxiv_all_files/{tex_fold}/')
+            # construct datapair
+            match_datapair(dct_color,color_pdf_file)
+            print(f'{file_idx}. successful constructed: {tex_fold}')
+        # 失败了，生成黑白数据
+        elif os.path.exists(origin_pdf_file):
+            # origin.html
+            subprocess.run(['latexmlc','--nocomments','--includestyles',f'--dest=/root/data/arxiv_origin/{tex_fold}/origin.html',f'--path=/root/data/arxiv_origin/{tex_fold}',f'-log=/root/data/arxiv_origin/{tex_fold}/origin.latexml.log',str(Path(origin_tex_file).name)],capture_output=True,text=True)
+            # os.system(f'latexmlc --nocomments --includestyles --dest=data/arxiv_origin/{tex_fold}/origin.html --path=data/arxiv_origin/{tex_fold} -log=data/arxiv_origin/{tex_fold}/origin.latexml.log {str(Path(origin_tex_file).name)} > log/construct_data.txt 2>&1')
+            html_file = f'/root/data/arxiv_origin/{tex_fold}/origin.html'
+            if os.path.exists(html_file):
+                subprocess.run(['cp', html_file,f'data/{save_fold}/{tex_fold}/{Path(html_file).name}'],capture_output=True,text=True)
+                # os.system(f'cp {html_file} data/arxiv_all_files/{tex_fold}/{Path(html_file).name}')
+                # origin.mmd
+                html2md(html=f'/root/data/arxiv_origin/{tex_fold}/origin.html',outp=f'/root/data/arxiv_origin/{tex_fold}/origin.mmd')
+                # os.system(f'python nougat/dataset/parser/html2md.py --html data/arxiv_origin/{tex_fold}/origin.html --out data/arxiv_origin/{tex_fold}/origin.mmd > log/construct_data.txt 2>&1')
+                mmd_file = f'/root/data/arxiv_origin/{tex_fold}/origin.mmd'
+                if os.path.exists(mmd_file):
+                    subprocess.run(['cp', mmd_file,f'data/{save_fold}/{tex_fold}/{Path(mmd_file).name}'],capture_output=True,text=True)
+                    # os.system(f'cp {mmd_file} data/arxiv_all_files/{tex_fold}/{Path(mmd_file).name}')                     
+                    # construct datapair
+                    black_datapair(origin_pdf_file,mmd_file)
+                    print(f'{file_idx}. black constructed: {tex_fold}')
+
+    except Exception as e:
+        print(f'{file_idx}. {tex_fold}:{e}')
+        
+    finally:
+        # 删除tex文件夹
+        subprocess.run(['rm','-r',f'/root/data/arxiv_origin/{tex_fold}'],capture_output=True,text=True)
+        # os.system(f'rm -r data/arxiv_origin/{tex_fold}') 
+        subprocess.run(['rm','-r',f'/root/data/arxiv_color/{tex_fold}'],capture_output=True,text=True)
+        # os.system(f'rm -r data/arxiv_color/{tex_fold}')
             
     
 if __name__ == '__main__':
-    # repair_ref(origin_pdf_file='data/arxiv_all_files/0704.0001/origin.pdf',color_pdf_file='data/arxiv_all_files/0704.0001/diphoton.pdf')
-   
-  
-    # dct_color=colored_dct('data/arxiv_all_files/0704.0017/color.mmd')
-    # pdf_file='data/arxiv_all_files/0704.0017/source.pdf'
-
-    # match_datapair(dct_color,pdf_file)
-    
+    # main(0,'1105.3478','data/tmp')
     with open('data/pdf_list/latex_dir.txt','r') as fi:
         lines = fi.readlines()
     fold_lst = [line.strip() for line in lines]
-    main(fold_lst,start_idx=134)
+    start_idx = int(sys.argv[1])
+    num_fold = int(sys.argv[2])
+    save_fold = sys.argv[3]
+    for file_idx in range(start_idx,start_idx+num_fold):
+        tex_fold = fold_lst[file_idx]
+        if not os.path.exists(f'data/{save_fold}/{tex_fold}'):
+            main(file_idx,tex_fold,save_fold)
     
