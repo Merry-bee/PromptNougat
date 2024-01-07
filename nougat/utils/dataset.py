@@ -272,8 +272,8 @@ class NougatDataset(Dataset):
             prompts = []
             pre_id_lst = tokenizer_out["input_ids"]    # lst:[[0,toekn1_1,token1_2,2],[0,token2_1,2],[0,token3_1,token3_2,2]]
             pre_ids.append(self.global_start_id)    # <work>
-            pre_ids.append(pre_id_lst[0][0])   # <s>
-            prompts.append([[0,0],[0,0]])   # p_<s>
+            pre_ids.append(pre_id_lst[0][0])   # <s> 这里的pre_ids包括input_ids和label_ids
+            prompts.append([[0,0],[0,0]])   # p_<s> 这里的prompts包括prompt_in和prompt_true
             for i,pre_id in enumerate(pre_id_lst):  
                 if pre_id[1] == 243:    # 单独一个空格，制造数据时多加的，去掉
                     pre_id = pre_id[2:-1]
@@ -293,11 +293,14 @@ class NougatDataset(Dataset):
             attention_mask = attention_mask + [0]*max(0,self.max_length-len(pre_ids))
             pre_ids = pre_ids + [self.pad_id]*max(0,self.max_length-len(pre_ids))
             # to_tensor
-            prompts = torch.tensor(prompts)
-            attention_mask = torch.tensor(attention_mask[:-1])
-            label_ids = torch.tensor(pre_ids[1:])
+            prompts = torch.tensor(prompts)         # 这里的prompts包括prompt_in和prompt_true
+            attention_mask = torch.tensor(attention_mask[:-1])  # 这里attention_mask对应pre_ids
+            label_ids = torch.tensor(pre_ids[1:])   # 这里label_ids和pre_ids分别比prompts短一个
             pre_ids = torch.tensor(pre_ids[:-1])
-            assert pre_ids.shape[0]==attention_mask.shape[0]==prompts.shape[0]-1
+            # construct keep_row_label
+            keep_row_label = torch.full_like(label_ids,True,dtype=bool)
+            keep_row_label[torch.where(torch.diff(prompts[:,0,1],dim=0))[0]] = False    # 这里keep_row_label对应prompt_true(diff)
+            assert pre_ids.shape[0]==attention_mask.shape[0]==prompts.shape[0]-1==keep_row_label.shape[0]
         
         # 非全文prompt，len(pretext) > len(prompt)= len(label) > 0
         elif len(sample['label'])>0:
@@ -333,4 +336,4 @@ class NougatDataset(Dataset):
                     break
         
         # pre_ids:[max_len-1],attention_mask:[max_len-1],label_ids:[max_len-1\len_label],prompt:[max_len-1\len_label,2,2]
-        return input_tensor, pre_ids, attention_mask, label_ids, prompts
+        return input_tensor, pre_ids, attention_mask, label_ids, prompts, keep_row_label

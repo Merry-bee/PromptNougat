@@ -5,20 +5,20 @@ ckpt_path: null
 dataset_paths: ["data/smiles_pic_cjd/train_std.jsonl"]
 tokenizer: "dataset/tokenizer.json"
 exp_name: "smiles"
-train_batch_sizes: [1]
+train_batch_sizes: [64]
 num_workers: 8
-val_batch_sizes: [2]
+val_batch_sizes: [128]
 val_batches: 1
 input_size: [448, 448]
 image_embedding_size: [14, 14]
-max_length: 4096
+max_length: 128
 prompt_label_length: 64
-max_position_embeddings: 4096
+max_position_embeddings: 128
 accumulate_grad_batches: 3
 window_size: 7
 patch_size: 4
-embed_dim: 128
-hidden_dimension: 1024
+embed_dim: 16
+hidden_dimension: 128
 num_heads: [4, 8, 16, 32]
 encoder_layer: [2, 2, 14, 2]
 decoder_layer: 4

@@ -222,6 +222,7 @@ class CausalLMOutput(ModelOutput):
     loss: Optional[Tuple[torch.FloatTensor]] = None
     logits: torch.FloatTensor = None
     prompt_pred:  torch.FloatTensor = None
+    p_keep_row: torch.FloatTensor = None
     past_key_values: Optional[Tuple[Tuple[torch.FloatTensor]]] = None
     hidden_states: Optional[Tuple[torch.FloatTensor]] = None
     attentions: Optional[Tuple[torch.FloatTensor]] = None
@@ -231,6 +232,7 @@ class CausalLMOutput(ModelOutput):
 class GreedySearchEncoderDecoderOutput(ModelOutput):
     sequences: torch.LongTensor = None
     prompt_pred: torch.FloatTensor = None
+    torch.FloatTensor = None
     scores: Optional[Tuple[torch.FloatTensor]] = None
     encoder_attentions: Optional[Tuple[torch.FloatTensor]] = None
     encoder_hidden_states: Optional[Tuple[torch.FloatTensor]] = None
@@ -400,11 +402,11 @@ class SwinEncoder(nn.Module):
         """
         if img is None:
             return
-        # if img.size[0] > img.size[1]:
-        #     img = img.resize(self.input_size)
-        # else:
-        img = img.resize([self.input_size[1],self.input_size[0]])
-       
+        try:
+            img = img.resize([self.input_size[1],self.input_size[0]])
+        except OSError:
+            return
+        
         return self.to_tensor(img)
 
 class PromptBartConfig(PretrainedConfig):
@@ -937,8 +939,6 @@ class PromptBartForCausalLM(PromptBartPreTrainedModel):
         self.tokenizer = PreTrainedTokenizerFast(tokenizer_file=str(tokenizer_file))
         self.pad_idx = self.tokenizer.pad_token_id
 
-        self.alpha = nn.Parameter(torch.FloatTensor([0.5]))
-
         # Initialize weights and apply final processing
         self.post_init()
 
@@ -962,8 +962,9 @@ class PromptBartForCausalLM(PromptBartPreTrainedModel):
 
     def decode_position(self,cross_attn_weights,attention_mask):
         prompt_pred=torch.zeros([attention_mask.shape[0],attention_mask.shape[1],2,2]).to(cross_attn_weights.device) # [bs,len,2,2]      
-        prompt_pred[:,:,0,0],prompt_pred[:,:,0,1],prompt_pred[:,:,1,0],prompt_pred[:,:,1,1]=self.position_decoder(cross_attn_weights,attention_mask) # [4,bs,16,len(input_ids),588]->[bs,len,2,2]
-        return prompt_pred
+        coords,p_keep_row=self.position_decoder(cross_attn_weights,attention_mask) # [4,bs,16,len(input_ids),588]->[bs,len,2,2]
+        prompt_pred[:,:,0,0],prompt_pred[:,:,0,1],prompt_pred[:,:,1,0],prompt_pred[:,:,1,1]=coords
+        return prompt_pred,p_keep_row
 
     def forward(
         self,
@@ -974,6 +975,7 @@ class PromptBartForCausalLM(PromptBartPreTrainedModel):
         head_mask: Optional[torch.Tensor] = None,
         cross_attn_head_mask: Optional[torch.Tensor] = None,
         prompt_in: Optional[torch.Tensor] = None,
+        keep_row_label: Optional[torch.Tensor] = None,
         prompt_true: Optional[torch.Tensor] = None,
         prompt_attention_mask: Optional[torch.Tensor] = None,
         prompt_attn_layer_head_mask: Optional[torch.Tensor] = None,
@@ -1084,12 +1086,13 @@ class PromptBartForCausalLM(PromptBartPreTrainedModel):
         
         cross_attn_weights = torch.stack(outputs['cross_attentions']) # [4, bs,16,len(input_ids),588]
         mask = attention_mask[:,-1:] if input_ids.shape[1] == 1 else attention_mask # inference with cache->attention_mask=1位
-        prompt_pred = self.decode_position(cross_attn_weights,mask)
+        prompt_pred,p_keep_row = self.decode_position(cross_attn_weights,mask)
      
         loss,loss_token,loss_position,iou = None,None,None,None
-        if labels is not None:      # train/validation
+        if labels is not None and keep_row_label is not None:      # train/validation
             labels = labels.to(logits.device)   # [bs,length], 用padding补齐
-            loss, loss_token,loss_position,iou = cal_loss(logits=logits.view(-1, self.config.vocab_size), labels=labels.view(-1),prompt_pred=prompt_pred,prompt_true=prompt_true)  # logits[bs*label_len,50000],labels[bs*label_len]
+            keep_row_label = keep_row_label.to(logits.device) 
+            loss, loss_token,loss_position,iou = cal_loss(logits=logits.view(-1, self.config.vocab_size), labels=labels.view(-1),prompt_pred=prompt_pred,prompt_true=prompt_true,p_keep_row=p_keep_row,keep_row_label = keep_row_label.view(-1))  # logits[bs*label_len,50000],labels[bs*label_len]
            
         if not return_dict:
             output = (logits,) + outputs[1:]
@@ -1099,6 +1102,7 @@ class PromptBartForCausalLM(PromptBartPreTrainedModel):
             loss=(loss,loss_token,loss_position,iou),
             logits=logits,
             prompt_pred = prompt_pred,
+            p_keep_row = p_keep_row,
             past_key_values=outputs.past_key_values,    
             hidden_states=outputs.hidden_states,        
             attentions=outputs.attentions,             
@@ -1121,6 +1125,7 @@ class PromptBartForCausalLM(PromptBartPreTrainedModel):
         synced_gpus: bool = False,
         pdf = None,
         prompt_in = None,
+        keep_row_label = None,
         validation = False,
         **model_kwargs, # attention_masks, encoder_outputs, use_cache
     ) -> GreedySearchEncoderDecoderOutput:
@@ -1187,6 +1192,7 @@ class PromptBartForCausalLM(PromptBartPreTrainedModel):
                 full_input_ids=input_ids,    # 只用于输出current tokens
                 pdf=pdf,
                 prompt_in=prompt_in,
+                keep_row_label=keep_row_label,
                 validation=validation
             )
     
@@ -1254,7 +1260,7 @@ class PromptBartForCausalLM(PromptBartPreTrainedModel):
                     output_hidden_states=output_hidden_states,
                     full_input_ids=input_ids,    # 只用于输出current tokens
                     pdf=pdf,
-                    
+                    keep_row_label=keep_row_label,
                 )
             
                 soft_logits = torch.softmax(outputs.logits,dim=2)
@@ -1378,6 +1384,7 @@ class PromptBartForCausalLM(PromptBartPreTrainedModel):
             return GreedySearchEncoderDecoderOutput(
                 sequences=input_ids,
                 prompt_pred = outputs['prompt_pred'],
+                p_keep_row = outputs['p_keep_row'],
                 scores=scores,
                 encoder_attentions=encoder_attentions,
                 encoder_hidden_states=encoder_hidden_states,
@@ -1405,6 +1412,7 @@ class PromptBartForCausalLM(PromptBartPreTrainedModel):
         negative_prompt_attention_mask: Optional[torch.Tensor] = None,
         pdf = None,
         prompt_in = None,
+        keep_row_label: Optional[torch.Tensor] = None,
         validation = False,
         **kwargs,   # input_ids, attention_masks,encoder_outputs,use_cache
     ) -> GreedySearchEncoderDecoderOutput:
@@ -1576,6 +1584,7 @@ class PromptBartForCausalLM(PromptBartPreTrainedModel):
             synced_gpus=synced_gpus,
             pdf=pdf,
             prompt_in=prompt_in,
+            keep_row_label=keep_row_label,
             validation=validation,
             **model_kwargs,     # attention_mask, encoder_output, use_cache
         )
@@ -1653,7 +1662,7 @@ class PromptDecoder(nn.Module):
                 scale_embedding=True,
                 add_final_layer_norm=True,
                 d_model=hidden_dimension,
-                prompt_embed_dim=1024,#256,
+                prompt_embed_dim=hidden_dimension,#1024,256,
                 decoder_start_token_id=9,
                 input_size = input_size,
                 image_embedding_size = image_embedding_size,
@@ -1746,6 +1755,7 @@ class PromptDecoder(nn.Module):
         attention_mask: Optional[torch.Tensor] = None,
         prompt_in: Optional[torch.Tensor] = None,
         prompt_true: Optional[torch.Tensor] = None,
+        keep_row_label: Optional[torch.Tensor] = None,
         encoder_hidden_states: Optional[torch.Tensor] = None,
         past_key_values: Optional[torch.Tensor] = None,
         labels: Optional[torch.Tensor] = None,
@@ -1760,6 +1770,7 @@ class PromptDecoder(nn.Module):
             prompt_in = prompt_in,
             prompt_true = prompt_true,
             labels=labels,
+            keep_row_label=keep_row_label,
             encoder_hidden_states=encoder_hidden_states,
             past_key_values=past_key_values,
             use_cache=use_cache,
@@ -2148,7 +2159,7 @@ class PromptNougatModel(PreTrainedModel):
             encoder_layer=self.config.encoder_layer,
             name_or_path=self.config.name_or_path,
             patch_size=self.config.patch_size,
-            embed_dim=self.config.embed_dim,
+            embed_dim=self.config.embed_dim,    # 输出维度=embed_dim*8，因此embed_dim*8==hidden_dimension
             num_heads=self.config.num_heads,
         )
        
@@ -2171,6 +2182,7 @@ class PromptNougatModel(PreTrainedModel):
         label_id: torch.Tensor = None,
         prompt_in: Optional[torch.Tensor] = None,
         prompt_true: Optional[torch.Tensor] = None,
+        keep_row_label: Optional[torch.Tensor] = None,
     ):
         """
         Calculate a loss given an input image and a desired token sequence,
@@ -2198,6 +2210,7 @@ class PromptNougatModel(PreTrainedModel):
             labels=labels.contiguous(),      
             prompt_in = prompt_in,
             prompt_true = prompt_true,
+            keep_row_label = keep_row_label,
         )
         return decoder_outputs
 
@@ -2213,6 +2226,7 @@ class PromptNougatModel(PreTrainedModel):
         return_attentions: bool = True,
         pdf = None,
         prompt = None,
+        keep_row_label: Optional[torch.Tensor] = None,
         validation = False,
         use_cache = False,
     ):
@@ -2266,6 +2280,7 @@ class PromptNougatModel(PreTrainedModel):
         decoder_output = self.decoder.model.generate(
             encoder_outputs=encoder_outputs,
             prompt_in=prompt,
+            keep_row_label=keep_row_label,
             decoder_input_ids = input_ids,  # kwargs
             attention_mask=attention_mask,   # kwargs
             min_length=1,

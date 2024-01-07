@@ -1,5 +1,5 @@
 resume_from_checkpoint_path: null
-# ckpt_path: 'result/nougat/20231207_034820/last.ckpt'
+ckpt_path: null
 result_path: "result"
 model_path: "checkpoints/0.1.0-small"
 dataset_paths: ["data/train_data/train_lorem.jsonl"]
