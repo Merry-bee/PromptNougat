@@ -56,6 +56,16 @@ class PositionDecoder(nn.Module):
         y2 = y1+h
         return [x1,y1,x2,y2],p_keep_row
         
+class FocalLoss(nn.Module):
+    def __init__(self,gamma=2,alpha=1):
+        super(FocalLoss,self).__init__()
+        self.gamma = gamma
+        self.alpha = alpha
+    def forward(self,input,target):
+        ce_loss = F.cross_entropy(input,target,reduction='none')
+        pt = torch.exp(-ce_loss)
+        focal_loss = self.alpha*(1-pt)**self.gamma*ce_loss
+        return focal_loss
         
 def iou(pred,target,epsilon=1e-5):
     '''
@@ -86,7 +96,7 @@ def diou_loss(pred,target,p_keep_row,keep_row_label,epsilon=1e-5,gamma=2):
     pred = pred.reshape(-1,2,2) # [bs*len,2,2]
     target = target.reshape(-1,2,2) 
     
-    iou_tensor = iou(pred,target,epsilon) # [bs*len,1]
+    iou_loss = iou(pred,target,epsilon) # [bs*len,1]
     
     pred,target = pred,target
     pred_center_x = (pred[:,1,0]+pred[:,0,0])/2
@@ -99,13 +109,16 @@ def diou_loss(pred,target,p_keep_row,keep_row_label,epsilon=1e-5,gamma=2):
     out_x2 = torch.max(pred[:,1,0],target[:,1,0])
     out_y2 = torch.max(pred[:,1,1],target[:,1,1])
     c2 = (torch.square(out_x2-out_x1)+torch.square(out_y2-out_y1))
-    diou_loss = 1-iou_tensor+d2
+    diou_loss = 1-iou_loss+d2 # [bs*len,1]
+    diou_loss1 = diou_loss[torch.where(keep_row_label)[0]]
+    diou_loss2 = diou_loss[torch.where(1-keep_row_label)[0]]
     
-    pt = p_keep_row
-    pt[~keep_row_label] = (1-p_keep_row)[~keep_row_label]
-    focal_loss = (1-pt)**gamma * diou_loss
+    focal_loss_func = FocalLoss(gamma=2,alpha=1)
+    focal_loss = focal_loss_func(p_keep_row,keep_row_label)
+    
+    loss_position = focal_loss+diou_loss
 
-    return focal_loss.mean(),iou_tensor.mean()
+    return loss_position.mean(),focal_loss.mean(),diou_loss1.mean(),diou_loss2.mean(),iou_loss.mean()
 
          
         

@@ -15,10 +15,10 @@ def cal_loss(logits,labels,prompt_pred,prompt_true,p_keep_row,keep_row_label):
         prompt_true = prompt_true.reshape(-1,2,2)[valid_mask]
         keep_row_label = keep_row_label[valid_mask]
         p_keep_row = p_keep_row[valid_mask]
-        loss_position,iou = diou_loss(pred=prompt_pred,target=prompt_true,p_keep_row=p_keep_row,keep_row_label=keep_row_label)  
+        loss_position,focal_loss,diou_loss1,diou_loss2,iou = diou_loss(pred=prompt_pred,target=prompt_true,p_keep_row=p_keep_row,keep_row_label=keep_row_label)  
         loss = loss_token + loss_position
     else:   # 整个bs没有任何prompt输入
-        loss,loss_position,iou = None,None,None
+        loss,loss_position,focal_loss,diou_loss1,diou_loss2,iou = None,None,None,None,None,None
     
     
-    return loss,loss_token,loss_position,iou
+    return loss,loss_token,loss_position,focal_loss,diou_loss1,diou_loss2,iou

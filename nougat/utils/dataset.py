@@ -298,8 +298,8 @@ class NougatDataset(Dataset):
             label_ids = torch.tensor(pre_ids[1:])   # 这里label_ids和pre_ids分别比prompts短一个
             pre_ids = torch.tensor(pre_ids[:-1])
             # construct keep_row_label
-            keep_row_label = torch.full_like(label_ids,True,dtype=bool)
-            keep_row_label[torch.where(torch.diff(prompts[:,0,1],dim=0))[0]] = False    # 这里keep_row_label对应prompt_true(diff)
+            keep_row_label = torch.full_like(label_ids,1,dtype=torch.float32)
+            keep_row_label[torch.where(torch.diff(prompts[:,0,1],dim=0))[0]] = 0   # 这里keep_row_label对应prompt_true(diff)
             assert pre_ids.shape[0]==attention_mask.shape[0]==prompts.shape[0]-1==keep_row_label.shape[0]
         
         # 非全文prompt，len(pretext) > len(prompt)= len(label) > 0

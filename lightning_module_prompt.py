@@ -89,11 +89,14 @@ class PromptModelPLModule(pl.LightningModule):
         label_ids = torch.cat(label_ids)
         prompts = torch.cat(prompts)
         keep_row_label = torch.cat(keep_row_label)
-        loss,loss_token,loss_position,iou = self.model(image_tensors, pre_input_ids, attention_masks, label_ids, prompt_in=prompts[:,:-1,:,:],prompt_true=prompts[:,1:,:,:],keep_row_label=keep_row_label)[0] #CrossEntropyLoss()+IoU_loss()
+        loss,loss_token,loss_position,focal_loss,diou_loss1,diou_loss2,iou = self.model(image_tensors, pre_input_ids, attention_masks, label_ids, prompt_in=prompts[:,:-1,:,:],prompt_true=prompts[:,1:,:,:],keep_row_label=keep_row_label)[0] #CrossEntropyLoss()+IoU_loss()
         if loss is not None:
             self.log_dict({"train/loss": loss}, sync_dist=False)
             self.log_dict({"train/loss_token": loss_token}, sync_dist=False)
             self.log_dict({"train/loss_position": loss_position}, sync_dist=False)
+            self.log_dict({"train/focal_loss": focal_loss}, sync_dist=False)
+            self.log_dict({"train/diou_loss1": diou_loss1}, sync_dist=False)
+            self.log_dict({"train/diou_loss2": diou_loss2}, sync_dist=False)
             self.log_dict({"train/iou": iou}, sync_dist=False)
             return loss
         else:
@@ -149,9 +152,12 @@ class PromptModelPLModule(pl.LightningModule):
         scores = {
             "val/" + key: sum(values) / len(values) for key, values in metrics.items()
         }
-        loss, loss_token,loss_position,iou = cal_loss(logits=logits.view(-1,self.model.decoder.tokenizer.vocab_size),labels=labels.view(-1),prompt_pred=output['prompt_pred'],prompt_true=prompt_true,p_keep_row = output['p_keep_row'],keep_row_label=keep_row_label.view(-1))
+        loss,loss_token,loss_position,focal_loss,diou_loss1,diou_loss2,iou = cal_loss(logits=logits.view(-1,self.model.decoder.tokenizer.vocab_size),labels=labels.view(-1),prompt_pred=output['prompt_pred'],prompt_true=prompt_true,p_keep_row = output['p_keep_row'],keep_row_label=keep_row_label.view(-1))
         scores["val/loss_token"] = loss_token
         scores["val/loss_position"] = loss_position
+        scores["val/focal_loss"] = focal_loss
+        scores["val/diou_loss1"] = diou_loss1
+        scores["val/diou_loss2"] = diou_loss2
         scores["val/iou"] = iou
         scores["val/loss"] = loss
         

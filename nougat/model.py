@@ -232,7 +232,7 @@ class CausalLMOutput(ModelOutput):
 class GreedySearchEncoderDecoderOutput(ModelOutput):
     sequences: torch.LongTensor = None
     prompt_pred: torch.FloatTensor = None
-    torch.FloatTensor = None
+    p_keep_row: torch.FloatTensor = None
     scores: Optional[Tuple[torch.FloatTensor]] = None
     encoder_attentions: Optional[Tuple[torch.FloatTensor]] = None
     encoder_hidden_states: Optional[Tuple[torch.FloatTensor]] = None
@@ -1088,18 +1088,18 @@ class PromptBartForCausalLM(PromptBartPreTrainedModel):
         mask = attention_mask[:,-1:] if input_ids.shape[1] == 1 else attention_mask # inference with cache->attention_mask=1位
         prompt_pred,p_keep_row = self.decode_position(cross_attn_weights,mask)
      
-        loss,loss_token,loss_position,iou = None,None,None,None
+        loss,loss_token,loss_position,focal_loss,diou_loss1,diou_loss2,iou = None,None,None,None,None,None,None
         if labels is not None and keep_row_label is not None:      # train/validation
             labels = labels.to(logits.device)   # [bs,length], 用padding补齐
             keep_row_label = keep_row_label.to(logits.device) 
-            loss, loss_token,loss_position,iou = cal_loss(logits=logits.view(-1, self.config.vocab_size), labels=labels.view(-1),prompt_pred=prompt_pred,prompt_true=prompt_true,p_keep_row=p_keep_row,keep_row_label = keep_row_label.view(-1))  # logits[bs*label_len,50000],labels[bs*label_len]
+            loss,loss_token,loss_position,focal_loss,diou_loss1,diou_loss2,iou = cal_loss(logits=logits.view(-1, self.config.vocab_size), labels=labels.view(-1),prompt_pred=prompt_pred,prompt_true=prompt_true,p_keep_row=p_keep_row,keep_row_label = keep_row_label.view(-1))  # logits[bs*label_len,50000],labels[bs*label_len]
            
         if not return_dict:
             output = (logits,) + outputs[1:]
             return (loss,) + output if loss is not None else output
 
         return CausalLMOutput(
-            loss=(loss,loss_token,loss_position,iou),
+            loss=(loss,loss_token,loss_position,focal_loss,diou_loss1,diou_loss2,iou),
             logits=logits,
             prompt_pred = prompt_pred,
             p_keep_row = p_keep_row,
@@ -2245,6 +2245,7 @@ class PromptNougatModel(PreTrainedModel):
             "repetitions": list(),
             'logits': list(),
             "prompt_pred":list(),
+            "p_keep_row":list(),
         }
         if image is None and image_tensors is None:
             logging.warn("Image not found")
@@ -2310,6 +2311,7 @@ class PromptNougatModel(PreTrainedModel):
         indices = logits.indices    # [batch_size,seq_len]
 
         output["prompt_pred"] = decoder_output.prompt_pred
+        output["p_keep_row"] = decoder_output.p_keep_row
 
         for b in range(batch_size):
             mask = indices[b] != self.pad_id
