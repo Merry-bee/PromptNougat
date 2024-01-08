@@ -71,7 +71,7 @@ class PromptModelPLModule(pl.LightningModule):
             )
 
     def training_step(self, batch, batch_idx):
-        image_tensors, pre_input_ids, label_ids, attention_masks,prompts = list(), list(), list(), list(), list()
+        image_tensors, pre_input_ids, label_ids, attention_masks,prompts,keep_row_label = list(), list(), list(), list(), list(), list()
         if batch is None:
             return
         for batch_data in batch:    # batch: input_tensor, pre_ids, attention_mask, label_id, prompt
@@ -82,12 +82,14 @@ class PromptModelPLModule(pl.LightningModule):
             attention_masks.append(batch_data[2])   # attention_mask
             label_ids.append(batch_data[3])         # label_id
             prompts.append(batch_data[4])           # prompt
+            keep_row_label.append(batch_data[5])   # keep_row_label
         image_tensors = torch.cat(image_tensors)
         pre_input_ids = torch.cat(pre_input_ids)
         attention_masks = torch.cat(attention_masks)
         label_ids = torch.cat(label_ids)
         prompts = torch.cat(prompts)
-        loss,loss_token,loss_position,iou = self.model(image_tensors, pre_input_ids, attention_masks, label_ids, prompt_in=prompts[:,:-1,:,:],prompt_true=prompts[:,1:,:,:])[0] #CrossEntropyLoss()+IoU_loss()
+        keep_row_label = torch.cat(keep_row_label)
+        loss,loss_token,loss_position,iou = self.model(image_tensors, pre_input_ids, attention_masks, label_ids, prompt_in=prompts[:,:-1,:,:],prompt_true=prompts[:,1:,:,:],keep_row_label=keep_row_label)[0] #CrossEntropyLoss()+IoU_loss()
         if loss is not None:
             self.log_dict({"train/loss": loss}, sync_dist=False)
             self.log_dict({"train/loss_token": loss_token}, sync_dist=False)
@@ -101,7 +103,7 @@ class PromptModelPLModule(pl.LightningModule):
     def validation_step(self, batch, batch_idx, dataset_idx=0):
         if batch is None:
             return
-        image_tensors,input_ids, attention_masks, labels, prompts = batch
+        image_tensors,input_ids, attention_masks, labels, prompts,keep_row_label = batch
         prompt_in = prompts[:,:-1,:,:]
         prompt_true=prompts[:,1:,:,:]
         if image_tensors is None:
@@ -115,6 +117,7 @@ class PromptModelPLModule(pl.LightningModule):
             attention_mask=attention_masks,
             return_attentions=True,
             prompt=prompt_in,
+            keep_row_label=keep_row_label,
             validation=True,
         )
         logits = output["logits"][0]  # pred id: [bs,len,50000]    
@@ -146,7 +149,7 @@ class PromptModelPLModule(pl.LightningModule):
         scores = {
             "val/" + key: sum(values) / len(values) for key, values in metrics.items()
         }
-        loss, loss_token,loss_position,iou = cal_loss(logits=logits.view(-1,self.model.decoder.tokenizer.vocab_size),labels=labels.view(-1),prompt_pred=output['prompt_pred'],prompt_true=prompt_true)
+        loss, loss_token,loss_position,iou = cal_loss(logits=logits.view(-1,self.model.decoder.tokenizer.vocab_size),labels=labels.view(-1),prompt_pred=output['prompt_pred'],prompt_true=prompt_true,p_keep_row = output['p_keep_row'],keep_row_label=keep_row_label.view(-1))
         scores["val/loss_token"] = loss_token
         scores["val/loss_position"] = loss_position
         scores["val/iou"] = iou
@@ -191,12 +194,17 @@ class PromptModelPLModule(pl.LightningModule):
         assert max_iter is not None
         optimizer = torch.optim.AdamW(filter(lambda p: p.requires_grad,self.parameters()), lr=self.config.lr)
         scheduler = {
-            "scheduler": self.exponential_scheduler(
+            # "scheduler": self.exponential_scheduler(
+            #     optimizer,
+            #     self.config.warmup_steps,
+            #     self.config.lr,
+            #     self.config.get("min_lr", 5e-5),
+            #     self.config.get("gamma", 0.9996),
+            # ),
+            "scheduler": self.cosine_scheduler(
                 optimizer,
+                self.config.warmup_steps*10, 
                 self.config.warmup_steps,
-                self.config.lr,
-                self.config.get("min_lr", 5e-5),
-                self.config.get("gamma", 0.9996),
             ),
             "name": "learning_rate",
             "interval": "step",
@@ -210,7 +218,8 @@ class PromptModelPLModule(pl.LightningModule):
             if current_step < warmup_steps:
                 return current_step / max(1, warmup_steps)
             progress = current_step - warmup_steps
-            progress /= max(1, training_steps - warmup_steps)
+            progress /= max(1, training_steps - warmup_steps)   # 余弦周期的长度
+
             return max(0.0, 0.5 * (1.0 + math.cos(math.pi * progress)))
 
         return LambdaLR(optimizer, lr_lambda)
