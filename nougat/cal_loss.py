@@ -2,7 +2,7 @@ from nougat.position_decoder import diou_loss
 from torch.nn import CrossEntropyLoss
 import torch
 
-def cal_loss(logits,labels,prompt_pred,prompt_true,p_keep_row,keep_row_label):
+def cal_loss(logits,labels,prompt_pred,prompt_true):
     # loss_token
     loss_fct = CrossEntropyLoss()
     loss_token = loss_fct(logits, labels)   # logits[bs*label_len,50000],labels[bs*label_len]
@@ -13,9 +13,7 @@ def cal_loss(logits,labels,prompt_pred,prompt_true,p_keep_row,keep_row_label):
     if len(valid_mask)>2:   # 存在除</s></work>外的prompt输入，loss=avg1(loss_token)+avg2(loss_position)
         prompt_pred = prompt_pred.reshape(-1,2,2)[valid_mask]
         prompt_true = prompt_true.reshape(-1,2,2)[valid_mask]
-        keep_row_label = keep_row_label[valid_mask]
-        p_keep_row = p_keep_row[valid_mask]
-        loss_position,iou = diou_loss(pred=prompt_pred,target=prompt_true,p_keep_row=p_keep_row,keep_row_label=keep_row_label)  
+        loss_position,iou = diou_loss(pred=prompt_pred,target=prompt_trues)  
         loss = loss_token + loss_position
     else:   # 整个bs没有任何prompt输入
         loss,loss_position,iou = None,None,None

@@ -8,14 +8,14 @@ class PositionDecoder(nn.Module):
         self.head_linear = nn.Linear(decoder_attention_heads*decoder_layers,1)   # 对16个head*4个layer加权
         self.num_layers = num_layers
         h = [hidden_dim] * (num_layers - 1)
-        self.keep_row_linear  = nn.Linear(input_dim,1)   # 是否换行
+      
         self.decoder1 = nn.ModuleList(nn.Linear(n, k) for n, k in zip([input_dim] + h, h + [output_dim])) # [(input_dim,hidden_dim),(hidden_dim,hidden_dim),(hidden_dim,output_dim)]
         self.decoder2 = nn.ModuleList(nn.Linear(n, k) for n, k in zip([input_dim] + h, h + [output_dim])) # [(input_dim,hidden_dim),(hidden_dim,hidden_dim),(hidden_dim,output_dim)]
         self.layernorms = nn.ModuleList(nn.LayerNorm(n) for n in [input_dim] + h) 
         self.image_size = image_size
         
     
-    def forward(self, heatmap,attention_valid_mask,keep_row_thres=0.5):
+    def forward(self, heatmap,attention_valid_mask):
         '''
         args:
             heatmap:[bs,16,len(input_ids),588]
@@ -25,21 +25,13 @@ class PositionDecoder(nn.Module):
         x = self.head_linear(heatmap).squeeze(-1)   # [bs,len,588,64]->[bs,len,588,1]->[bs,len,588]
         x = x.reshape(bs*input_len,-1)   # [bs*len,588]
         
-        p_keep_row = self.keep_row_linear(x).sigmoid().view(-1)  # [bs,len,588]->[bs,len,1]->[bs*seq_len]
-        x1_indices = torch.where(p_keep_row > keep_row_thres)[0]    # 保留当前行
-        x1 = x[x1_indices]     
-        x2_indices = torch.where(p_keep_row <= keep_row_thres)[0]  # 换行
-        x2 = x[x2_indices]    
+       
         for i in range(len(self.decoder1)):
-            x1 = self.layernorms[i](x1)
-            x1 = F.gelu(self.decoder1[i](x1)) if i < self.num_layers - 1 else self.decoder1[i](x1)                     
-        for i in range(len(self.decoder2)):
-            x2 = self.layernorms[i](x2)
-            x2 = F.gelu(self.decoder2[i](x2)) if i < self.num_layers - 1 else self.decoder2[i](x2)
-        out_tensor = torch.zeros(bs*input_len,4,dtype=x.dtype).to(x.device)
-        out_tensor[x1_indices] = x1
-        out_tensor[x2_indices] = x2
-        out_tensor = out_tensor.reshape(bs,input_len,-1)  # # [bs*len,588]-> [bs,len,588]
+            x = self.layernorms[i](x)
+            x = F.gelu(self.decoder1[i](x)) if i < self.num_layers - 1 else self.decoder1[i](x)                     
+      
+        
+        out_tensor = x.reshape(bs,input_len,-1)  # # [bs*len,588]-> [bs,len,588]
         
         out_tensor = out_tensor.sigmoid() # [bs,len,4] 标准化的坐标
         # attention_valid_mask=0 -> pred=[[0,0],[0,0]](pad坐标)
@@ -54,7 +46,7 @@ class PositionDecoder(nn.Module):
       
         x2 = x1+w
         y2 = y1+h
-        return [x1,y1,x2,y2],p_keep_row
+        return [x1,y1,x2,y2]
         
         
 def iou(pred,target,epsilon=1e-5):
@@ -77,7 +69,7 @@ def iou(pred,target,epsilon=1e-5):
 
     return iou
     
-def diou_loss(pred,target,p_keep_row,keep_row_label,epsilon=1e-5,gamma=2):
+def diou_loss(pred,target,epsilon=1e-5,gamma=2):
     '''
     args: 
     pred/target: [bs,length,2,2]
@@ -101,11 +93,8 @@ def diou_loss(pred,target,p_keep_row,keep_row_label,epsilon=1e-5,gamma=2):
     c2 = (torch.square(out_x2-out_x1)+torch.square(out_y2-out_y1))
     diou_loss = 1-iou_tensor+d2
     
-    pt = p_keep_row
-    pt[~keep_row_label] = (1-p_keep_row)[~keep_row_label]
-    focal_loss = (1-pt)**gamma * diou_loss
 
-    return focal_loss.mean(),iou_tensor.mean()
+    return diou_loss.mean(),iou_tensor.mean()
 
          
         
