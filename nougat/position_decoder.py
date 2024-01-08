@@ -93,7 +93,7 @@ def diou_loss(pred,target,epsilon=1e-5,gamma=2):
     c2 = (torch.square(out_x2-out_x1)+torch.square(out_y2-out_y1))
     diou_loss = 1-iou_tensor+d2
     
-
+    # test git
     return diou_loss.mean(),iou_tensor.mean()
 
          
