@@ -25,10 +25,10 @@ class PositionDecoder(nn.Module):
         x = self.head_linear(heatmap).squeeze(-1)   # [bs,len,588,64]->[bs,len,588,1]->[bs,len,588]
         x = x.reshape(bs*input_len,-1)   # [bs*len,588]
         
-        p_keep_row = self.keep_row_linear(x).sigmoid().view(-1)  # [bs,len,588]->[bs,len,1]->[bs*seq_len]
-        x1_indices = torch.where(p_keep_row > keep_row_thres)[0]    # 保留当前行
+        logits_keep_row = self.keep_row_linear(x).view(-1)  # [bs,len,588]->[bs,len,1]->[bs*seq_len]
+        x1_indices = torch.where(logits_keep_row.sigmoid() > keep_row_thres)[0]    # 保留当前行
         x1 = x[x1_indices]     
-        x2_indices = torch.where(p_keep_row <= keep_row_thres)[0]  # 换行
+        x2_indices = torch.where(logits_keep_row.sigmoid() <= keep_row_thres)[0]  # 换行
         x2 = x[x2_indices]    
         for i in range(len(self.decoder1)):
             x1 = self.layernorms[i](x1)
@@ -54,7 +54,7 @@ class PositionDecoder(nn.Module):
       
         x2 = x1+w
         y2 = y1+h
-        return [x1,y1,x2,y2],p_keep_row
+        return [x1,y1,x2,y2],logits_keep_row
         
 class FocalLoss(nn.Module):
     def __init__(self,gamma=2,alpha=1):
@@ -62,7 +62,8 @@ class FocalLoss(nn.Module):
         self.gamma = gamma
         self.alpha = alpha
     def forward(self,input,target):
-        ce_loss = F.cross_entropy(input,target,reduction='none')
+        # ce_loss = F.cross_entropy(input,target,reduction='none') with logits
+        ce_loss = F.binary_cross_entropy_with_logits(input,target,reduction='none')
         pt = torch.exp(-ce_loss)
         focal_loss = self.alpha*(1-pt)**self.gamma*ce_loss
         return focal_loss
@@ -87,7 +88,7 @@ def iou(pred,target,epsilon=1e-5):
 
     return iou
     
-def diou_loss(pred,target,p_keep_row,keep_row_label,epsilon=1e-5,gamma=2):
+def diou_loss(pred,target,logits_keep_row,keep_row_label,epsilon=1e-5,gamma=2):
     '''
     args: 
     pred/target: [bs,length,2,2]
@@ -114,7 +115,7 @@ def diou_loss(pred,target,p_keep_row,keep_row_label,epsilon=1e-5,gamma=2):
     diou_loss2 = diou_loss[torch.where(1-keep_row_label)[0]]
     
     focal_loss_func = FocalLoss(gamma=2,alpha=1)
-    focal_loss = focal_loss_func(p_keep_row,keep_row_label)
+    focal_loss = focal_loss_func(logits_keep_row,keep_row_label)
     
     loss_position = focal_loss+diou_loss
 

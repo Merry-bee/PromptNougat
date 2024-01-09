@@ -222,7 +222,7 @@ class CausalLMOutput(ModelOutput):
     loss: Optional[Tuple[torch.FloatTensor]] = None
     logits: torch.FloatTensor = None
     prompt_pred:  torch.FloatTensor = None
-    p_keep_row: torch.FloatTensor = None
+    logits_keep_row: torch.FloatTensor = None
     past_key_values: Optional[Tuple[Tuple[torch.FloatTensor]]] = None
     hidden_states: Optional[Tuple[torch.FloatTensor]] = None
     attentions: Optional[Tuple[torch.FloatTensor]] = None
@@ -232,7 +232,7 @@ class CausalLMOutput(ModelOutput):
 class GreedySearchEncoderDecoderOutput(ModelOutput):
     sequences: torch.LongTensor = None
     prompt_pred: torch.FloatTensor = None
-    p_keep_row: torch.FloatTensor = None
+    logits_keep_row: torch.FloatTensor = None
     scores: Optional[Tuple[torch.FloatTensor]] = None
     encoder_attentions: Optional[Tuple[torch.FloatTensor]] = None
     encoder_hidden_states: Optional[Tuple[torch.FloatTensor]] = None
@@ -962,9 +962,9 @@ class PromptBartForCausalLM(PromptBartPreTrainedModel):
 
     def decode_position(self,cross_attn_weights,attention_mask):
         prompt_pred=torch.zeros([attention_mask.shape[0],attention_mask.shape[1],2,2]).to(cross_attn_weights.device) # [bs,len,2,2]      
-        coords,p_keep_row=self.position_decoder(cross_attn_weights,attention_mask) # [4,bs,16,len(input_ids),588]->[bs,len,2,2]
+        coords,logits_keep_row=self.position_decoder(cross_attn_weights,attention_mask) # [4,bs,16,len(input_ids),588]->[bs,len,2,2]
         prompt_pred[:,:,0,0],prompt_pred[:,:,0,1],prompt_pred[:,:,1,0],prompt_pred[:,:,1,1]=coords
-        return prompt_pred,p_keep_row
+        return prompt_pred,logits_keep_row
 
     def forward(
         self,
@@ -1086,13 +1086,13 @@ class PromptBartForCausalLM(PromptBartPreTrainedModel):
         
         cross_attn_weights = torch.stack(outputs['cross_attentions']) # [4, bs,16,len(input_ids),588]
         mask = attention_mask[:,-1:] if input_ids.shape[1] == 1 else attention_mask # inference with cache->attention_mask=1位
-        prompt_pred,p_keep_row = self.decode_position(cross_attn_weights,mask)
+        prompt_pred,logits_keep_row = self.decode_position(cross_attn_weights,mask)
      
         loss,loss_token,loss_position,focal_loss,diou_loss1,diou_loss2,iou = None,None,None,None,None,None,None
         if labels is not None and keep_row_label is not None:      # train/validation
             labels = labels.to(logits.device)   # [bs,length], 用padding补齐
             keep_row_label = keep_row_label.to(logits.device) 
-            loss,loss_token,loss_position,focal_loss,diou_loss1,diou_loss2,iou = cal_loss(logits=logits.view(-1, self.config.vocab_size), labels=labels.view(-1),prompt_pred=prompt_pred,prompt_true=prompt_true,p_keep_row=p_keep_row,keep_row_label = keep_row_label.view(-1))  # logits[bs*label_len,50000],labels[bs*label_len]
+            loss,loss_token,loss_position,focal_loss,diou_loss1,diou_loss2,iou = cal_loss(logits=logits.view(-1, self.config.vocab_size), labels=labels.view(-1),prompt_pred=prompt_pred,prompt_true=prompt_true,logits_keep_row=logits_keep_row,keep_row_label = keep_row_label.view(-1))  # logits[bs*label_len,50000],labels[bs*label_len]
            
         if not return_dict:
             output = (logits,) + outputs[1:]
@@ -1102,7 +1102,7 @@ class PromptBartForCausalLM(PromptBartPreTrainedModel):
             loss=(loss,loss_token,loss_position,focal_loss,diou_loss1,diou_loss2,iou),
             logits=logits,
             prompt_pred = prompt_pred,
-            p_keep_row = p_keep_row,
+            logits_keep_row = logits_keep_row,
             past_key_values=outputs.past_key_values,    
             hidden_states=outputs.hidden_states,        
             attentions=outputs.attentions,             
@@ -1384,7 +1384,7 @@ class PromptBartForCausalLM(PromptBartPreTrainedModel):
             return GreedySearchEncoderDecoderOutput(
                 sequences=input_ids,
                 prompt_pred = outputs['prompt_pred'],
-                p_keep_row = outputs['p_keep_row'],
+                logits_keep_row = outputs['logits_keep_row'],
                 scores=scores,
                 encoder_attentions=encoder_attentions,
                 encoder_hidden_states=encoder_hidden_states,
@@ -2245,7 +2245,7 @@ class PromptNougatModel(PreTrainedModel):
             "repetitions": list(),
             'logits': list(),
             "prompt_pred":list(),
-            "p_keep_row":list(),
+            "logits_keep_row":list(),
         }
         if image is None and image_tensors is None:
             logging.warn("Image not found")
@@ -2311,7 +2311,7 @@ class PromptNougatModel(PreTrainedModel):
         indices = logits.indices    # [batch_size,seq_len]
 
         output["prompt_pred"] = decoder_output.prompt_pred
-        output["p_keep_row"] = decoder_output.p_keep_row
+        output["logits_keep_row"] = decoder_output.logits_keep_row
 
         for b in range(batch_size):
             mask = indices[b] != self.pad_id

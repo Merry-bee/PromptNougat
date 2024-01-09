@@ -1,6 +1,6 @@
 resume_from_checkpoint_path: null
 result_path: "result"
-ckpt_path: 'result/nougat/20231227_195400/last.ckpt'
+ckpt_path: null
 model_path: "result/nougat/20231227_195400"
 dataset_paths: ["data/arxiv_train_data/train.jsonl"]
 tokenizer: "dataset/tokenizer.json"

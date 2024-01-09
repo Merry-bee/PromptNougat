@@ -3,7 +3,7 @@
 # train0.jsonl:0-34w = 9/34 = 0.26
 # train1.jsonl:34-55w = 4/21 = 0.1
 # train2.jsonl:55-76w = 0.8/21 = 0.03
-# train3.jsonl:76-97w
+# train3.jsonl:76-97w = 7.5/21 = 0.35
 
 # 切换到项目根目录
 cd /mnt/workspace/sunyu/nougat

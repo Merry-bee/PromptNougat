@@ -152,7 +152,7 @@ class PromptModelPLModule(pl.LightningModule):
         scores = {
             "val/" + key: sum(values) / len(values) for key, values in metrics.items()
         }
-        loss,loss_token,loss_position,focal_loss,diou_loss1,diou_loss2,iou = cal_loss(logits=logits.view(-1,self.model.decoder.tokenizer.vocab_size),labels=labels.view(-1),prompt_pred=output['prompt_pred'],prompt_true=prompt_true,p_keep_row = output['p_keep_row'],keep_row_label=keep_row_label.view(-1))
+        loss,loss_token,loss_position,focal_loss,diou_loss1,diou_loss2,iou = cal_loss(logits=logits.view(-1,self.model.decoder.tokenizer.vocab_size),labels=labels.view(-1),prompt_pred=output['prompt_pred'],prompt_true=prompt_true,logits_keep_row = output['logits_keep_row'],keep_row_label=keep_row_label.view(-1))
         scores["val/loss_token"] = loss_token
         scores["val/loss_position"] = loss_position
         scores["val/focal_loss"] = focal_loss

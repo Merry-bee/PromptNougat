@@ -2,7 +2,7 @@ from nougat.position_decoder import diou_loss
 from torch.nn import CrossEntropyLoss
 import torch
 
-def cal_loss(logits,labels,prompt_pred,prompt_true,p_keep_row,keep_row_label):
+def cal_loss(logits,labels,prompt_pred,prompt_true,logits_keep_row,keep_row_label):
     # loss_token
     loss_fct = CrossEntropyLoss()
     loss_token = loss_fct(logits, labels)   # logits[bs*label_len,50000],labels[bs*label_len]
@@ -14,8 +14,8 @@ def cal_loss(logits,labels,prompt_pred,prompt_true,p_keep_row,keep_row_label):
         prompt_pred = prompt_pred.reshape(-1,2,2)[valid_mask]
         prompt_true = prompt_true.reshape(-1,2,2)[valid_mask]
         keep_row_label = keep_row_label[valid_mask]
-        p_keep_row = p_keep_row[valid_mask]
-        loss_position,focal_loss,diou_loss1,diou_loss2,iou = diou_loss(pred=prompt_pred,target=prompt_true,p_keep_row=p_keep_row,keep_row_label=keep_row_label)  
+        logits_keep_row = logits_keep_row[valid_mask]
+        loss_position,focal_loss,diou_loss1,diou_loss2,iou = diou_loss(pred=prompt_pred,target=prompt_true,logits_keep_row=logits_keep_row,keep_row_label=keep_row_label)  
         loss = loss_token + loss_position
     else:   # 整个bs没有任何prompt输入
         loss,loss_position,focal_loss,diou_loss1,diou_loss2,iou = None,None,None,None,None,None
