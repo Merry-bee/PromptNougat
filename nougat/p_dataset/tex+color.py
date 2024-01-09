@@ -587,7 +587,7 @@ def main(file_idx,tex_fold,save_fold):
                 process = subprocess.Popen(['pdflatex', '-f', '-interaction=nonstopmode', Path(color_tex_file).name], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
                 check_subprocess(process,60,30)
                 # subprocess.run(['pdflatex', '-f', '-interaction=nonstopmode', Path(color_tex_file).name], capture_output=True, text=True)
-                os.chdir(f'../mnt/workspace/sunyu/nougat')
+                os.chdir(f'/root/../mnt/workspace/sunyu/nougat')
                 # os.chdir('../../../')
                 # os.system(f'cd data/arxiv_color/{tex_fold}/ && pdflatex -f -interaction=nonstopmode {Path(color_tex_file).name} > ../../../log/construct_data.txt 2>&1')
                 color_pdf_file = f'{color_tex_file.replace(".tex",".pdf")}'

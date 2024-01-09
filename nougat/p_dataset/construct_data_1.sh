@@ -15,10 +15,10 @@ conda activate base
 concurrent_limit=50
 # 每个进程处理文件数量
 num_fold=1000
-# 设置文件起始idx, 处理文件范围：760,000~760,000+50*1,000=760,000~810,000
-start_from=760000
+# 设置文件起始idx, 处理文件范围：340,000~340,000+50*1,000=340,000~390,000
+start_from=340000
 # arxiv_all_files_idx
-save_fold='arxiv_all_files3'
+save_fold='arxiv_all_files1'
 
 for ((i=0;i<$concurrent_limit;i++)); do
 

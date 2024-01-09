@@ -209,7 +209,7 @@ class PromptModelPLModule(pl.LightningModule):
             # ),
             "scheduler": self.cosine_scheduler(
                 optimizer,
-                self.config.warmup_steps*10, 
+                self.config.warmup_steps*15, 
                 self.config.warmup_steps,
             ),
             "name": "learning_rate",
