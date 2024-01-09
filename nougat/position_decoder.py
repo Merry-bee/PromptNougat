@@ -9,8 +9,7 @@ class PositionDecoder(nn.Module):
         self.num_layers = num_layers
         h = [hidden_dim] * (num_layers - 1)
       
-        self.decoder1 = nn.ModuleList(nn.Linear(n, k) for n, k in zip([input_dim] + h, h + [output_dim])) # [(input_dim,hidden_dim),(hidden_dim,hidden_dim),(hidden_dim,output_dim)]
-        self.decoder2 = nn.ModuleList(nn.Linear(n, k) for n, k in zip([input_dim] + h, h + [output_dim])) # [(input_dim,hidden_dim),(hidden_dim,hidden_dim),(hidden_dim,output_dim)]
+        self.layers = nn.ModuleList(nn.Linear(n, k) for n, k in zip([input_dim] + h, h + [output_dim])) # [(input_dim,hidden_dim),(hidden_dim,hidden_dim),(hidden_dim,output_dim)]
         self.layernorms = nn.ModuleList(nn.LayerNorm(n) for n in [input_dim] + h) 
         self.image_size = image_size
         
@@ -26,9 +25,9 @@ class PositionDecoder(nn.Module):
         x = x.reshape(bs*input_len,-1)   # [bs*len,588]
         
        
-        for i in range(len(self.decoder1)):
+        for i in range(len(self.layers)):
             x = self.layernorms[i](x)
-            x = F.gelu(self.decoder1[i](x)) if i < self.num_layers - 1 else self.decoder1[i](x)                     
+            x = F.gelu(self.layers[i](x)) if i < self.num_layers - 1 else self.layers[i](x)                     
       
         
         out_tensor = x.reshape(bs,input_len,-1)  # # [bs*len,588]-> [bs,len,588]
@@ -69,7 +68,7 @@ def iou(pred,target,epsilon=1e-5):
 
     return iou
     
-def diou_loss(pred,target,epsilon=1e-5,gamma=2):
+def diou_loss(pred,target,epsilon=1e-5,alpha=10):
     '''
     args: 
     pred/target: [bs,length,2,2]
@@ -91,7 +90,7 @@ def diou_loss(pred,target,epsilon=1e-5,gamma=2):
     out_x2 = torch.max(pred[:,1,0],target[:,1,0])
     out_y2 = torch.max(pred[:,1,1],target[:,1,1])
     c2 = (torch.square(out_x2-out_x1)+torch.square(out_y2-out_y1))
-    diou_loss = 1-iou_tensor+d2
+    diou_loss = 1-iou_tensor+alpha*d2
     
     # test git
     return diou_loss.mean(),iou_tensor.mean()

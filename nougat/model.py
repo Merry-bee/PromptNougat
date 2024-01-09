@@ -28,7 +28,7 @@ import torch.nn as nn
 from torch.nn import CrossEntropyLoss
 import torch.nn.functional as F
 import torch.distributed as dist
-
+from nougat.visualization import visual_box
 
 from timm.models.swin_transformer import SwinTransformer
 from torchvision.transforms.functional import resize, rotate
@@ -923,7 +923,7 @@ class PromptBartForCausalLM(PromptBartPreTrainedModel):
         self.lm_head = nn.Linear(config.hidden_size, config.vocab_size, bias=False)
         self.image_embedding_size = config.image_embedding_size #[28,21]
         self.embed_ratio = config.input_size[0]/config.image_embedding_size[0]  # 896/28=32
-        
+        self.alpha = nn.Parameter(torch.zeros(1))
 
         self.prompt_encoder = PromptEncoder(
             embed_dim=config.prompt_embed_dim,
@@ -1264,42 +1264,47 @@ class PromptBartForCausalLM(PromptBartPreTrainedModel):
 
                 for b in range(p_max.shape[0]):
                     p = p_max[b][-1].item()
-                    if p < p_thres and p_max.shape[0]==1: 
+                    # 可视化预测结果
+                    save_path = f'data/tmp/visual_png/{Path(pdf[0]).stem}_{pdf[1]}.png'
+                    prompt_pred = outputs.prompt_pred.squeeze(0)[-1] # [1,1,2,2]->[2,2]
+                    pd = fitz.open(pdf[0])
+                    page = pd[pdf[1]]
+                    if not os.path.exists(save_path):
+                        with open(save_path, "wb") as f:
+                            f.write(page.get_pixmap(dpi=300).pil_tobytes(format="PNG")) 
+                    visual_box(png_path=save_path,boxes=prompt_pred.clone(),save_path=save_path,color='orange',image_size = [448,448])  # [672,896]
+                    # 人工参与
+                    if p < p_thres and p_max.shape[0]==1:
                         # batch_size=1,inference with human
                         cross_attn_weights = torch.stack(outputs.cross_attentions)[:,:,:,-1:,:] # [4, bs,16,1,588]
-                        prompt_pred = outputs.prompt_pred.squeeze(0)[-1] # [1,1,2,2]->[2,2]
-                        # 保存预测结果
-                        visual_box(png_path,boxes,save_path,color='red',image_size = [672,896])
-                        # 读取用户输入
+                        # 保存原图
                         os.system('rm flask-image-annotator/images/*')
-                        png_path = f'flask-image-annotator/images/{Path(pdf[0]).stem}_{pdf[1]}.png'
-                        pd = fitz.open(pdf[0])
-                        page = pd[pdf[1]]
-                        with open(png_path, "wb") as f:
+                        flask_png_path = f'flask-image-annotator/images/{Path(pdf[0]).stem}_{pdf[1]}.png'   
+                        with open(flask_png_path, "wb") as f:
                             f.write(page.get_pixmap(dpi=300).pil_tobytes(format="PNG")) 
-                        image_size = [672,896]
-                        img = Image.open(png_path).resize(image_size)
+                        # 读取用户输入
+                        image_size = [448,448] # [672,896]
+                        img = Image.open(flask_png_path).resize(image_size)
                         draw = ImageDraw.Draw(img)
                         prompt_pred[:,0] *= image_size[0]
                         prompt_pred[:,1] *= image_size[1]
                         draw.rectangle([tuple(prompt_pred[0]),tuple(prompt_pred[1])],outline='red')
                         # draw.text((prompt_pred[0][0]-10,prompt_pred[0][1]-20),f'{prompt_pred.tolist()}',fill='black')
-                        img.save(png_path)     
-                        print(f'''pdf:{pdf[0]}\npretexts:{repr(self.tokenizer.decode(input_ids[b]))}\n
-                              this_token:{self.tokenizer.decode(torch.argmax(soft_logits[b,-1]))}\np={p}''')
+                        img.save(flask_png_path)     
+                        print(f'pdf:{pdf[0]}\npretexts:{repr(self.tokenizer.decode(input_ids[b]))}\nthis_token:{self.tokenizer.decode(torch.argmax(soft_logits[b,-1]))}\np={p}')
                         os.chdir('flask-image-annotator')
                         process = subprocess.Popen(['python','app.py'])
                         os.chdir('../')
-                        
                         with open('flask-image-annotator/out.json','r') as fi:
                             user_input = fi.readline()
-                        if user_input:  # 不画框：直接默认不变
+                        if user_input:  # 不画框直接默认不变
                             dct = json.loads(user_input)
                             token_user = dct['name'].replace('\\n','\n')  # 将\\n恢复为\n，但保留Unicode字符串
                             if token_user:  # 画了框但没有输入text：token不变
                                 outputs.logits[b,-1,self.tokenizer(token_user)['input_ids'][1]]=outputs.logits[b,-1,:].max()+1
                             prompt_user = [[dct['x1']/image_size[0],dct['y1']/image_size[1]],[dct['x2']/image_size[0],dct['y2']/image_size[1]]]
                             outputs.prompt_pred[:,-1:,:,:] = torch.tensor(prompt_user,dtype=torch.bfloat16).unsqueeze(0).unsqueeze(0)   # [2,2]->[1,1,2,2]
+                            visual_box(png_path=save_path,boxes=torch.tensor(prompt_user),save_path=save_path,color='red',image_size = [448,448])   # [672,896]
                         process.terminate()
                             
                             
